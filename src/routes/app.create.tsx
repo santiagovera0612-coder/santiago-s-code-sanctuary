@@ -1575,27 +1575,26 @@ function ProductForm({
   onCancel: () => void;
 }) {
   const [p, setP] = useState<Product>(product);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const u = <K extends keyof Product>(k: K, v: Product[K]) => setP((x) => ({ ...x, [k]: v }));
 
   return (
-    <div className="surface-card border-primary/30 p-5">
+    <div className="surface-card border-primary/30 p-5 sm:p-6">
+      <div className="mb-5">
+        <h4 className="font-display text-lg font-semibold">Cargá un producto</h4>
+        <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
+          Empezá con lo básico. Después podés agregar más detalles si los necesitás.
+        </p>
+      </div>
+
+      {/* Básicos */}
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Nombre del producto">
-          <input value={p.name} onChange={(e) => u("name", e.target.value)} className="input" />
-        </Field>
-        <Field label="Categoría">
-          <input
-            value={p.category ?? ""}
-            onChange={(e) => u("category", e.target.value)}
-            className="input"
-          />
-        </Field>
         <div className="sm:col-span-2">
-          <Field label="Descripción">
-            <textarea
-              value={p.description ?? ""}
-              onChange={(e) => u("description", e.target.value)}
-              rows={2}
+          <Field label="Nombre del producto">
+            <input
+              value={p.name}
+              onChange={(e) => u("name", e.target.value)}
+              placeholder="Ej: Lámpara Nórdica"
               className="input"
             />
           </Field>
@@ -1603,67 +1602,113 @@ function ProductForm({
         <Field label="Precio">
           <input
             type="number"
+            inputMode="decimal"
             value={p.price ?? ""}
             onChange={(e) => u("price", e.target.value ? Number(e.target.value) : undefined)}
+            placeholder="0"
             className="input"
           />
         </Field>
-        <Field label="Moneda">
-          <select
-            value={p.currency ?? "ARS"}
-            onChange={(e) => u("currency", e.target.value)}
-            className="input"
-          >
-            <option>ARS</option>
-            <option>USD</option>
-            <option>EUR</option>
-          </select>
-        </Field>
-        <Field label="Stock">
+        <Field label="Categoría (opcional)">
           <input
-            type="number"
-            value={p.stock ?? ""}
-            onChange={(e) => u("stock", e.target.value ? Number(e.target.value) : undefined)}
+            value={p.category ?? ""}
+            onChange={(e) => u("category", e.target.value)}
+            placeholder="Ej: Iluminación"
             className="input"
           />
         </Field>
-        <Field label="Foto del producto (URL)">
-          <input
-            value={p.imageUrl ?? ""}
-            onChange={(e) => u("imageUrl", e.target.value)}
-            placeholder="https://…"
-            className="input"
-          />
-        </Field>
-        <div className="sm:col-span-2">
-          <Field label="Notas para la IA">
-            <textarea
-              value={p.aiNotes ?? ""}
-              onChange={(e) => u("aiNotes", e.target.value)}
-              rows={2}
-              placeholder="Ej: Recomendarlo para regalos, consultar stock antes de confirmar…"
+      </div>
+
+      {/* Avanzadas */}
+      <button
+        type="button"
+        onClick={() => setShowAdvanced((v) => !v)}
+        className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+      >
+        <ChevronDown
+          className={`h-3.5 w-3.5 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
+        />
+        {showAdvanced ? "Ocultar opciones avanzadas" : "Ver opciones avanzadas"}
+      </button>
+
+      {showAdvanced && (
+        <div className="mt-4 grid gap-3 rounded-xl border border-dashed border-border/80 bg-surface/40 p-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <Field label="Descripción">
+              <textarea
+                value={p.description ?? ""}
+                onChange={(e) => u("description", e.target.value)}
+                rows={2}
+                placeholder="Contale a la IA qué es este producto."
+                className="input"
+              />
+            </Field>
+          </div>
+          <Field label="Moneda">
+            <select
+              value={p.currency ?? "ARS"}
+              onChange={(e) => u("currency", e.target.value)}
+              className="input"
+            >
+              <option>ARS</option>
+              <option>USD</option>
+              <option>EUR</option>
+            </select>
+          </Field>
+          <Field label="Stock">
+            <input
+              type="number"
+              value={p.stock ?? ""}
+              onChange={(e) => u("stock", e.target.value ? Number(e.target.value) : undefined)}
+              placeholder="0"
               className="input"
             />
           </Field>
+          <div className="sm:col-span-2">
+            <Field label="Foto del producto (URL)">
+              <input
+                value={p.imageUrl ?? ""}
+                onChange={(e) => u("imageUrl", e.target.value)}
+                placeholder="https://…"
+                className="input"
+              />
+            </Field>
+          </div>
+          <div className="sm:col-span-2">
+            <Field label="Notas para la IA">
+              <textarea
+                value={p.aiNotes ?? ""}
+                onChange={(e) => u("aiNotes", e.target.value)}
+                rows={2}
+                placeholder="Ej: Recomendarlo para regalos, consultar stock antes de confirmar…"
+                className="input"
+              />
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                Usá este campo para aclarar cuándo recomendar el producto o qué no debe prometer
+                CLERIVO.
+              </p>
+            </Field>
+          </div>
+          <div className="flex items-center gap-3 sm:col-span-2">
+            <Switch checked={p.active} onChange={(v) => u("active", v)} />
+            <span className="text-sm">{p.active ? "Producto activo" : "Producto inactivo"}</span>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Switch checked={p.active} onChange={(v) => u("active", v)} />
-          <span className="text-sm">{p.active ? "Activo" : "Inactivo"}</span>
-        </div>
-      </div>
-      <div className="mt-4 flex gap-2">
+      )}
+
+      <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row">
+        <button
+          onClick={onCancel}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 text-sm font-medium"
+        >
+          Cancelar
+        </button>
         <button
           onClick={() => p.name && onSave(p)}
           disabled={!p.name}
-          className="inline-flex h-10 items-center gap-2 rounded-xl bg-gradient-primary px-4 text-sm font-semibold text-primary-foreground shadow-glow disabled:opacity-40"
+          className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-primary px-4 text-sm font-semibold text-primary-foreground shadow-glow disabled:opacity-40 sm:flex-none"
         >
           <Save className="h-4 w-4" /> Guardar producto
-        </button>
-        <button
-          onClick={onCancel}
-          className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-card px-4 text-sm font-medium"
-        >
-          Cancelar
         </button>
       </div>
     </div>
