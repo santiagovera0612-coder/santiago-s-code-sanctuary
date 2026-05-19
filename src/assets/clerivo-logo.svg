@@ -1,0 +1,20 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1024"
+  height="1024"
+  viewBox="0 0 1024 1024"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">Clerivo app logo</title>
+  <desc id="desc">Rounded light violet app icon with a navy C mark and violet center dot.</desc>
+  <rect width="1024" height="1024" rx="238" fill="#F3F0FF" />
+  <path
+    d="M 702 278 A 282 282 0 1 0 702 746"
+    fill="none"
+    stroke="#020D24"
+    stroke-width="106"
+    stroke-linecap="round"
+  />
+  <circle cx="544" cy="512" r="104" fill="#8D6DFC" />
+</svg>
