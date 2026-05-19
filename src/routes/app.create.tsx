@@ -1784,50 +1784,67 @@ function ProductsList({
           No hay productos para mostrar.
         </div>
       ) : (
-        <div className="grid gap-2">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((p) => (
             <div
               key={p.id}
-              className="flex items-center gap-3 rounded-xl border border-border bg-card p-3"
+              className="surface-card group relative flex flex-col overflow-hidden p-0 transition hover:shadow-glow"
             >
-              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
+              <div className="relative aspect-[4/3] w-full overflow-hidden bg-gradient-to-br from-muted to-accent/30">
                 {p.imageUrl ? (
-                  <img src={p.imageUrl} alt={p.name} className="h-full w-full object-cover" />
+                  <img
+                    src={p.imageUrl}
+                    alt={p.name}
+                    className="h-full w-full object-cover transition group-hover:scale-[1.02]"
+                  />
                 ) : (
-                  <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                  <div className="flex h-full w-full items-center justify-center">
+                    <ImageIcon className="h-8 w-8 text-muted-foreground/60" />
+                  </div>
                 )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{p.name}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {p.category ?? "Sin categoría"} ·{" "}
-                  {p.price != null ? `${p.currency ?? "ARS"} ${p.price}` : "Sin precio"} · Stock{" "}
-                  {p.stock ?? 0}
-                </p>
-              </div>
-              <span
-                className={`hidden rounded-full px-2 py-0.5 text-[10px] font-semibold sm:inline ${
-                  p.active
-                    ? "bg-success/15 text-success"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {p.active ? "Activo" : "Inactivo"}
-              </span>
-              {onEdit && (
-                <button
-                  onClick={() => onEdit(p)}
-                  className="rounded-lg border border-border p-2 hover:bg-accent"
+                <span
+                  className={`absolute left-2 top-2 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold backdrop-blur ${
+                    p.active
+                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
+                      : "bg-muted/80 text-muted-foreground"
+                  }`}
                 >
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
-              )}
-              <button
-                onClick={() => setProducts(products.filter((x) => x.id !== p.id))}
-                className="rounded-lg border border-border p-2 text-destructive hover:bg-destructive/10"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      p.active ? "bg-emerald-500" : "bg-muted-foreground/60"
+                    }`}
+                  />
+                  {p.active ? "Activo" : "Inactivo"}
+                </span>
+              </div>
+              <div className="flex flex-1 flex-col gap-2 p-4">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{p.name}</p>
+                  <p className="mt-0.5 truncate text-[11px] uppercase tracking-wider text-muted-foreground">
+                    {p.category?.trim() || "Sin categoría"}
+                  </p>
+                </div>
+                <p className="font-display text-base font-semibold text-foreground">
+                  {p.price != null ? `${p.currency ?? "ARS"} ${p.price}` : "Sin precio"}
+                </p>
+                <div className="mt-auto flex items-center gap-2 pt-2">
+                  {onEdit && (
+                    <button
+                      onClick={() => onEdit(p)}
+                      className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border bg-card text-xs font-semibold hover:bg-accent"
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> Editar
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setProducts(products.filter((x) => x.id !== p.id))}
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-destructive hover:bg-destructive/10"
+                    aria-label="Eliminar producto"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
             </div>
           ))}
         </div>
