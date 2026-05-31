@@ -10,5 +10,6 @@
   "vars": {
     "ANTHROPIC_MODEL": "claude-sonnet-4-6",
     "WHATSAPP_API_VERSION": "v25.0",
+    "WHATSAPP_V2_ENABLED": "false",
   },
 }
