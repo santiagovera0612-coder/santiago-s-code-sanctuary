@@ -1,11 +1,23 @@
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, Eye, EyeOff, Mail, Lock, Sparkles, ShieldCheck, Zap, TrendingUp } from "lucide-react";
+import {
+  ArrowRight,
+  Eye,
+  EyeOff,
+  Mail,
+  Lock,
+  Sparkles,
+  ShieldCheck,
+  Zap,
+  TrendingUp,
+} from "lucide-react";
 import { z } from "zod";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, supabaseConfigError } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const schema = z.object({
   email: z.string().trim().email({ message: "Email inválido" }).max(255),
@@ -16,7 +28,10 @@ export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
       { title: "Iniciar sesión — Clerivo" },
-      { name: "description", content: "Accedé a tu cuenta de Clerivo y gestioná tus agentes de IA." },
+      {
+        name: "description",
+        content: "Accedé a tu cuenta de Clerivo y gestioná tus agentes de IA.",
+      },
     ],
   }),
   validateSearch: (s: Record<string, unknown>) => ({
@@ -44,11 +59,19 @@ function LoginPage() {
       toast.error(parsed.error.issues[0].message);
       return;
     }
+    if (supabaseConfigError) {
+      toast.error(supabaseConfigError);
+      return;
+    }
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword(parsed.data);
     setLoading(false);
     if (error) {
-      toast.error(error.message === "Invalid login credentials" ? "Email o contraseña incorrectos" : error.message);
+      toast.error(
+        error.message === "Invalid login credentials"
+          ? "Email o contraseña incorrectos"
+          : error.message,
+      );
       return;
     }
     toast.success("¡Bienvenido de vuelta!");
@@ -67,7 +90,11 @@ function LoginPage() {
         </Link>
 
         <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center">
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+          >
             <h1 className="font-display text-3xl font-bold tracking-tight md:text-4xl">
               Bienvenido de vuelta
             </h1>
@@ -100,7 +127,7 @@ function LoginPage() {
                   trailing={
                     <button
                       type="button"
-                      onClick={() => setShow(s => !s)}
+                      onClick={() => setShow((s) => !s)}
                       className="text-muted-foreground transition hover:text-foreground"
                       aria-label={show ? "Ocultar contraseña" : "Mostrar contraseña"}
                     >
@@ -109,7 +136,10 @@ function LoginPage() {
                   }
                 />
                 <div className="mt-1.5 flex justify-end">
-                  <button type="button" className="text-xs text-muted-foreground hover:text-foreground">
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
                     ¿Olvidaste tu contraseña?
                   </button>
                 </div>
@@ -121,7 +151,13 @@ function LoginPage() {
                 size="lg"
                 className="h-12 w-full bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-95"
               >
-                {loading ? "Ingresando…" : (<>Iniciar sesión <ArrowRight className="ml-2 h-4 w-4" /></>)}
+                {loading ? (
+                  "Ingresando…"
+                ) : (
+                  <>
+                    Iniciar sesión <ArrowRight className="ml-2 h-4 w-4" />
+                  </>
+                )}
               </Button>
             </form>
 
@@ -146,30 +182,45 @@ function LoginPage() {
 }
 
 function Field({
-  id, label, icon, type, placeholder, value, onChange, autoComplete, trailing,
+  id,
+  label,
+  icon,
+  type,
+  placeholder,
+  value,
+  onChange,
+  autoComplete,
+  trailing,
 }: {
-  id: string; label: string; icon: React.ReactNode; type: string; placeholder: string;
-  value: string; onChange: (v: string) => void; autoComplete?: string; trailing?: React.ReactNode;
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+  type: string;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+  autoComplete?: string;
+  trailing?: React.ReactNode;
 }) {
   return (
-    <div>
-      <label htmlFor={id} className="mb-1.5 block text-xs font-medium text-foreground">
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="text-xs font-medium">
         {label}
-      </label>
+      </Label>
       <div className="group relative flex items-center">
-        <span className="pointer-events-none absolute left-3 text-muted-foreground transition group-focus-within:text-primary">
+        <span className="pointer-events-none absolute left-3 z-10 text-muted-foreground transition group-focus-within:text-primary">
           {icon}
         </span>
-        <input
+        <Input
           id={id}
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           autoComplete={autoComplete}
-          className="h-12 w-full rounded-xl border border-border bg-background pl-10 pr-10 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+          className="h-12 rounded-xl bg-background pl-10 pr-10 text-sm"
         />
-        {trailing && <span className="absolute right-3">{trailing}</span>}
+        {trailing && <span className="absolute right-3 z-10">{trailing}</span>}
       </div>
     </div>
   );
@@ -177,10 +228,26 @@ function Field({
 
 function SidePanel() {
   const benefits = [
-    { icon: <Sparkles className="h-4 w-4" />, t: "Creación guiada", d: "Configurá tu agente respondiendo unas preguntas." },
-    { icon: <ShieldCheck className="h-4 w-4" />, t: "Catálogo inteligente", d: "Sumá productos para que la IA los conozca." },
-    { icon: <Zap className="h-4 w-4" />, t: "Simulador de respuestas", d: "Probá cómo respondería antes de conectarlo." },
-    { icon: <TrendingUp className="h-4 w-4" />, t: "Canales preparados", d: "WhatsApp e Instagram, disponibles próximamente." },
+    {
+      icon: <Sparkles className="h-4 w-4" />,
+      t: "Creación guiada",
+      d: "Configurá tu agente respondiendo unas preguntas.",
+    },
+    {
+      icon: <ShieldCheck className="h-4 w-4" />,
+      t: "Reglas claras",
+      d: "Definí qué responde y qué no debe inventar tu agente.",
+    },
+    {
+      icon: <Zap className="h-4 w-4" />,
+      t: "Simulador de respuestas",
+      d: "Probá cómo respondería antes de conectarlo.",
+    },
+    {
+      icon: <TrendingUp className="h-4 w-4" />,
+      t: "Canales preparados",
+      d: "WhatsApp e Instagram, próximamente.",
+    },
   ];
   return (
     <div className="relative hidden overflow-hidden bg-gradient-mesh lg:block">
@@ -196,7 +263,8 @@ function SidePanel() {
         <div className="space-y-8">
           <div>
             <h2 className="font-display text-3xl font-bold leading-tight tracking-tight md:text-4xl">
-              Diseñá tu<br /> Agente IA.
+              Diseñá tu
+              <br /> Agente IA.
             </h2>
             <p className="mt-4 max-w-md text-sm text-muted-foreground">
               Configurá reglas, cargá productos y probá respuestas antes de conectar tus canales.
@@ -205,7 +273,10 @@ function SidePanel() {
 
           <div className="grid grid-cols-2 gap-3">
             {benefits.map((b) => (
-              <div key={b.t} className="rounded-xl border border-border/60 bg-surface-elevated/70 p-4 backdrop-blur">
+              <div
+                key={b.t}
+                className="rounded-xl border border-border/60 bg-surface-elevated/70 p-4 backdrop-blur"
+              >
                 <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary text-primary-foreground">
                   {b.icon}
                 </div>

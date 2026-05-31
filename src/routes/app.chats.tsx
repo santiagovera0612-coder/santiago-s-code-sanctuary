@@ -1,534 +1,1437 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useRef, useEffect, useMemo } from "react";
-import { toast } from "sonner";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  Search, Send, Bot, User, Phone, Video, MoreVertical, Paperclip,
-  Smile, ArrowLeft, ArrowRight, Filter, Instagram, MessageCircle, Check, CheckCheck,
-  Sparkles, ThumbsUp, CalendarClock, Flame,
+  Search,
+  Send,
+  Bot,
+  User,
+  Phone,
+  MoreVertical,
+  Paperclip,
+  Smile,
+  ArrowLeft,
+  ArrowRight,
+  Instagram,
+  MessageCircle,
+  CheckCheck,
+  Sparkles,
+  X,
+  Lightbulb,
+  Target,
+  ShoppingBag,
+  Clock,
+  HelpCircle,
+  Tag,
+  ChevronDown,
 } from "lucide-react";
-import { getStoredAgent, getStoredProducts, type StoredAgent, type StoredProduct } from "@/lib/clerivo-agent";
-import { ClerivoBubble } from "@/components/clerivo-bubble";
+import { toast } from "sonner";
+import { getStoredAgent, type StoredAgent } from "@/lib/clerivo-agent";
+import { ApiError } from "@/lib/api-client";
+import {
+  fetchChatConversations,
+  markChatRead,
+  sendChatMessage,
+  setChatHandler,
+  subscribeToChatRealtime,
+  type ChatChannel,
+  type ChatConversation,
+  type CustomerInfo,
+  type LeadStatus,
+} from "@/lib/clerivo-chats";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export const Route = createFileRoute("/app/chats")({
   head: () => ({ meta: [{ title: "Chats — Clerivo" }] }),
   component: ChatsPage,
 });
 
-type Channel = "all" | "whatsapp" | "instagram";
-type Handler = "bot" | "human";
-type Msg = {
-  id: string;
-  from: "client" | "bot" | "human";
-  text: string;
-  time: string;
-  read?: boolean;
+type Channel = "all" | ChatChannel;
+type Conversation = ChatConversation;
+
+/** Channel metadata — uses Lucide icons that already exist in the project. */
+const channelMeta: Record<
+  Exclude<Channel, "all">,
+  { icon: typeof Instagram; label: string; dot: string; bg: string; fg: string }
+> = {
+  whatsapp: {
+    icon: MessageCircle,
+    label: "WhatsApp",
+    dot: "bg-[#25D366]",
+    bg: "bg-[#25D366]",
+    fg: "text-white",
+  },
+  instagram: {
+    icon: Instagram,
+    label: "Instagram",
+    dot: "bg-[#E4405F]",
+    bg: "bg-gradient-to-tr from-[#F58529] via-[#DD2A7B] to-[#8134AF]",
+    fg: "text-white",
+  },
 };
 
-type Conversation = {
-  id: string;
-  name: string;
-  initials: string;
-  avatarColor: string;
-  channel: Exclude<Channel, "all">;
-  lastMessage: string;
-  time: string;
-  unread: number;
-  tag?: { label: string; tone: "primary" | "warning" | "success" | "info" };
-  handler: Handler;
-  online?: boolean;
-  messages: Msg[];
+/** Lead status visual tokens. Colors come from the design spec. */
+const leadMeta: Record<LeadStatus, { label: string; bg: string; fg: string; dot: string }> = {
+  nuevo: {
+    label: "Nuevo",
+    bg: "bg-[#EFF6FF]",
+    fg: "text-[#2563EB]",
+    dot: "bg-[#2563EB]",
+  },
+  interesado: {
+    label: "Interesado",
+    bg: "bg-[var(--cv-color-primary-light)]",
+    fg: "text-[var(--cv-color-primary)]",
+    dot: "bg-[var(--cv-color-primary)]",
+  },
+  caliente: {
+    label: "Caliente",
+    bg: "bg-[#FEF2F2]",
+    fg: "text-[#DC2626]",
+    dot: "bg-[#DC2626]",
+  },
+  seguimiento: {
+    label: "Seguimiento",
+    bg: "bg-[#FFF7ED]",
+    fg: "text-[#F97316]",
+    dot: "bg-[#F97316]",
+  },
+  cliente: {
+    label: "Cliente",
+    bg: "bg-[#F0FDF4]",
+    fg: "text-[#16A34A]",
+    dot: "bg-[#16A34A]",
+  },
+  perdido: {
+    label: "Perdido",
+    bg: "bg-[#F3F4F6]",
+    fg: "text-[#6B7280]",
+    dot: "bg-[#9CA3AF]",
+  },
 };
 
-const channelMeta: Record<Exclude<Channel, "all">, { icon: typeof Instagram; label: string; color: string }> = {
-  whatsapp: { icon: MessageCircle, label: "WhatsApp", color: "text-emerald-500 bg-emerald-500/10" },
-  instagram: { icon: Instagram, label: "Instagram", color: "text-pink-500 bg-pink-500/10" },
+const LEAD_FILTERS: Array<{ key: LeadStatus | "all"; label: string }> = [
+  { key: "all", label: "Todos" },
+  { key: "nuevo", label: "Nuevo" },
+  { key: "interesado", label: "Interesado" },
+  { key: "caliente", label: "Caliente" },
+  { key: "seguimiento", label: "Seguimiento" },
+  { key: "cliente", label: "Cliente" },
+  { key: "perdido", label: "Perdido" },
+];
+
+type MetaGraphError = {
+  message?: string;
+  code?: number | string;
+  error_subcode?: number | string;
+  type?: string;
 };
 
-const tagTone: Record<string, string> = {
-  primary: "bg-primary/15 text-primary",
-  warning: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-  success: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-  info: "bg-sky-500/15 text-sky-600 dark:text-sky-400",
-};
+function parseMetaGraphError(detail?: string): MetaGraphError | null {
+  if (!detail) return null;
+  try {
+    const parsed = JSON.parse(detail) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as MetaGraphError) : null;
+  } catch {
+    return null;
+  }
+}
 
-function buildSeed(agent: StoredAgent, products: StoredProduct[]): Conversation[] {
-  const business = agent.businessName || "tu negocio";
-  const agentName = agent.agentName || "tu agente";
-  const active = products.filter((p) => p.active);
-  const p1 = active[0]?.name;
-  const p2 = active[1]?.name;
-
-  const greet = (name: string) =>
-    `¡Hola ${name}! Soy ${agentName}, te ayudo con consultas de ${business}.`;
-
-  return [
-    {
-      id: "1",
-      name: "María López",
-      initials: "ML",
-      avatarColor: "from-pink-500 to-rose-500",
-      channel: "whatsapp",
-      lastMessage: p1 ? `Quería más info de ${p1}` : "Quería más info por favor",
-      time: "17:58",
-      unread: 2,
-      tag: { label: "Interesado", tone: "info" },
-      handler: "bot",
-      online: true,
-      messages: [
-        { id: "m1", from: "client", text: "Hola", time: "17:55" },
-        {
-          id: "m2",
-          from: "client",
-          text: p1 ? `Vi ${p1}, ¿está disponible?` : "¿Cómo puedo hacer una consulta?",
-          time: "17:55",
-        },
-        {
-          id: "m3",
-          from: "bot",
-          text: greet("María") + (p1 ? ` Sí, ${p1} está en catálogo. ¿Querés que te pase más detalles?` : " Contame en qué te puedo ayudar."),
-          time: "17:56",
-          read: true,
-        },
-        { id: "m4", from: "client", text: "Sí dale", time: "17:57" },
-      ],
-    },
-    {
-      id: "2",
-      name: "Juan Pérez",
-      initials: "JP",
-      avatarColor: "from-[#8D6DFC] to-[#A78BFA]",
-      channel: "instagram",
-      lastMessage: "¿Cómo es el envío?",
-      time: "17:42",
-      unread: 1,
-      tag: { label: "Seguimiento", tone: "primary" },
-      handler: "human",
-      messages: [
-        {
-          id: "m1",
-          from: "client",
-          text: p2 ? `Hola, quería consultar por ${p2}` : "Hola, quería hacer una consulta",
-          time: "17:40",
-        },
-        { id: "m2", from: "human", text: "¡Hola Juan! Te paso los detalles enseguida 🙌", time: "17:41", read: true },
-        { id: "m3", from: "client", text: "¿Cómo es el envío?", time: "17:42" },
-      ],
-    },
-    {
-      id: "3",
-      name: "Carla Gómez",
-      initials: "CG",
-      avatarColor: "from-amber-500 to-orange-500",
-      channel: "whatsapp",
-      lastMessage: "Listo, te confirmo la compra",
-      time: "16:20",
-      unread: 0,
-      tag: { label: "Cliente", tone: "success" },
-      handler: "bot",
-      messages: [
-        {
-          id: "m1",
-          from: "client",
-          text: p1 ? `Quiero ${p1}` : "Quiero coordinar una compra",
-          time: "16:10",
-        },
-        {
-          id: "m2",
-          from: "bot",
-          text: greet("Carla") + " Te paso los datos para coordinar el envío.",
-          time: "16:12",
-          read: true,
-        },
-        { id: "m3", from: "client", text: "Listo, te confirmo la compra", time: "16:20" },
-      ],
-    },
-  ];
+function chatApiErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    const meta = parseMetaGraphError(error.detail);
+    if (String(meta?.code) === "190") {
+      return `${fallback}: el token de Meta expiro o ya no es valido. Renovalo en Integraciones.`;
+    }
+    if (String(meta?.code) === "131030") {
+      return `${fallback}: el numero no esta autorizado para este token de prueba. Agregalo en Meta, genera un token nuevo y guardalo en Integraciones.`;
+    }
+    if (String(meta?.code) === "131047") {
+      return `${fallback}: pasaron mas de 24 horas desde el ultimo mensaje del cliente. Usa una plantilla de WhatsApp para reabrir la conversacion.`;
+    }
+    const detail = meta?.message || error.detail || error.code;
+    return detail ? `${fallback}: ${detail}` : fallback;
+  }
+  return error instanceof Error && error.message ? `${fallback}: ${error.message}` : fallback;
 }
 
 function ChatsPage() {
   const [agent, setAgent] = useState<StoredAgent | null>(null);
-  const [products, setProducts] = useState<StoredProduct[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setAgent(getStoredAgent());
-    setProducts(getStoredProducts());
-    setHydrated(true);
+    let alive = true;
+    (async () => {
+      try {
+        const loadedAgent = await getStoredAgent();
+        if (!alive) return;
+        setAgent(loadedAgent);
+      } catch {
+        toast.error("No pudimos cargar los chats.");
+        if (!alive) return;
+        setAgent(null);
+      } finally {
+        if (alive) setHydrated(true);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  if (!hydrated) return null;
+  if (!hydrated) return <ChatsSkeleton />;
 
   if (!agent) {
     return (
       <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-6 py-12">
         <div className="mx-auto max-w-md text-center surface-card p-8">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-primary-foreground shadow-glow">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-primary-foreground">
             <Bot className="h-6 w-6" />
           </div>
           <h1 className="font-display text-2xl font-bold">Primero configurá tu Agente IA</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Configurá tu agente para ver cómo se organizarían tus conversaciones.
           </p>
-          <Link
-            to="/app/create"
-            className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg bg-gradient-primary px-5 text-sm font-semibold text-primary-foreground shadow-glow"
-          >
-            Crear Agente IA <ArrowRight className="h-4 w-4" />
-          </Link>
+          <Button asChild className="mt-5 h-11 rounded-lg">
+            <Link to="/app/create">
+              Crear Agente IA <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
         </div>
       </div>
     );
   }
 
-  return <ChatsInner agent={agent} products={products} />;
+  return <ChatsInner agent={agent} />;
 }
 
-function ChatsInner({ agent, products }: { agent: StoredAgent; products: StoredProduct[] }) {
-  const seed = useMemo(() => buildSeed(agent, products), [agent, products]);
-  const [conversations, setConversations] = useState<Conversation[]>(seed);
-  const [activeId, setActiveId] = useState<string>(seed[0].id);
+/** Mobile flow: 3 stacked screens (list → chat → info), each slide-in
+ *  from the right. Desktop renders everything as columns simultaneously. */
+type MobileScreen = "list" | "chat" | "info";
+
+function ChatsInner({ agent }: { agent: StoredAgent }) {
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId] = useState<string>("");
+  const [loadingChats, setLoadingChats] = useState(true);
+  const [sending, setSending] = useState(false);
   const [channel, setChannel] = useState<Channel>("all");
+  const [leadFilter, setLeadFilter] = useState<LeadStatus | "all">("all");
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState("");
-  const [showListMobile, setShowListMobile] = useState(true);
+  /** Desktop: toggles the right-side customer info column. */
+  const [showInfo, setShowInfo] = useState(false);
+  /** Mobile screen stack. */
+  const [mobileScreen, setMobileScreen] = useState<MobileScreen>("list");
+
   const scrollRef = useRef<HTMLDivElement>(null);
+  const realtimeErrorShown = useRef(false);
+
+  const mergeConversation = useCallback((updated: Conversation) => {
+    setConversations((prev) => {
+      const exists = prev.some((item) => item.id === updated.id);
+      if (!exists) return [updated, ...prev];
+      return [updated, ...prev.filter((item) => item.id !== updated.id)];
+    });
+  }, []);
+
+  const refreshChats = useCallback(async (showError = true) => {
+    try {
+      const loaded = await fetchChatConversations();
+      setConversations(loaded);
+      setActiveId((current) => {
+        if (current && loaded.some((item) => item.id === current)) return current;
+        return loaded[0]?.id ?? "";
+      });
+    } catch {
+      if (showError) toast.error("No pudimos cargar las conversaciones.");
+    } finally {
+      setLoadingChats(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshChats();
+    const unsubscribe = subscribeToChatRealtime(
+      () => void refreshChats(false),
+      () => {
+        if (!realtimeErrorShown.current) {
+          toast.error("No pudimos mantener los chats en tiempo real.");
+          realtimeErrorShown.current = true;
+        }
+      },
+    );
+    return unsubscribe;
+  }, [refreshChats]);
+
+  /** Mobile flicker fix: previously a scroll event listener animated the
+   *  filters block hide/show on scroll, which caused per-frame relayouts
+   *  and visible flicker. Replaced by **native browser sticky**: the
+   *  whole mobile screen 1 lives inside a single scroll container; the
+   *  header uses `position: sticky` so the browser's compositor keeps it
+   *  pinned with zero JS, and the filters scroll out naturally as part
+   *  of the page content. No listener, no rAF, no flicker. */
+
+  /** Desktop-only: collapsible dropdown for the Leads filter.
+   *  Renders as a small pill on the left column and expands into a
+   *  floating panel with all the lead chips when clicked. Click-outside
+   *  and Escape close it. */
+  const [leadsOpen, setLeadsOpen] = useState(false);
+  const leadsDropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!leadsOpen) return;
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      const node = leadsDropdownRef.current;
+      if (!node) return;
+      if (node.contains(e.target as Node)) return;
+      setLeadsOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLeadsOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("touchstart", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [leadsOpen]);
 
   const filtered = useMemo(() => {
-    return conversations.filter(c => {
+    return conversations.filter((c) => {
       if (channel !== "all" && c.channel !== channel) return false;
+      if (leadFilter !== "all" && c.lead !== leadFilter) return false;
       if (query && !c.name.toLowerCase().includes(query.toLowerCase())) return false;
       return true;
     });
-  }, [conversations, channel, query]);
+  }, [conversations, channel, leadFilter, query]);
 
-  const active = conversations.find(c => c.id === activeId) ?? conversations[0];
+  const active = conversations.find((c) => c.id === activeId) ?? conversations[0];
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    scrollRef.current?.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: "smooth",
+    });
   }, [active?.messages.length, activeId]);
 
   const counts = useMemo(() => {
     return {
       all: conversations.length,
-      whatsapp: conversations.filter(c => c.channel === "whatsapp").length,
-      instagram: conversations.filter(c => c.channel === "instagram").length,
+      whatsapp: conversations.filter((c) => c.channel === "whatsapp").length,
+      instagram: conversations.filter((c) => c.channel === "instagram").length,
     };
   }, [conversations]);
 
-  const send = () => {
-    if (!draft.trim()) return;
+  const send = async () => {
+    if (!draft.trim() || !active) return;
     const text = draft.trim();
-    const time = new Date().toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
-    setConversations(prev => prev.map(c => c.id === activeId ? {
-      ...c,
-      lastMessage: text,
-      time,
-      messages: [...c.messages, { id: crypto.randomUUID(), from: c.handler, text, time, read: false }],
-    } : c));
-    setDraft("");
+    setSending(true);
+    try {
+      const updated = await sendChatMessage(active.id, text);
+      mergeConversation(updated);
+      setActiveId(updated.id);
+      setDraft("");
+    } catch (error) {
+      toast.error(chatApiErrorMessage(error, "No pudimos enviar el mensaje"));
+    } finally {
+      setSending(false);
+    }
   };
 
-  const toggleHandler = () => {
-    setConversations(prev => prev.map(c => c.id === activeId ? {
-      ...c,
-      handler: c.handler === "bot" ? "human" : "bot",
-    } : c));
+  const toggleHandler = async () => {
+    if (!active) return;
+    try {
+      const updated = await setChatHandler(active.id, active.handler === "bot" ? "human" : "bot");
+      mergeConversation(updated);
+    } catch {
+      toast.error("No pudimos cambiar el modo de respuesta.");
+    }
   };
 
-  const openConversation = (id: string) => {
+  const openConversation = async (id: string) => {
     setActiveId(id);
-    setShowListMobile(false);
-    setConversations(prev => prev.map(c => c.id === id ? { ...c, unread: 0 } : c));
+    setMobileScreen("chat");
+    try {
+      const updated = await markChatRead(id);
+      mergeConversation(updated);
+    } catch {
+      toast.error("No pudimos marcar el chat como leído.");
+    }
   };
 
   const agentLabel = agent.agentName || "Agente IA";
 
-  return (
-    <div className="flex h-[calc(100vh-4rem-5rem)] md:h-[calc(100vh-4rem)] overflow-hidden">
-      {/* Lista de conversaciones */}
-      <aside
-        className={`${showListMobile ? "flex" : "hidden"} md:flex w-full md:w-80 lg:w-96 shrink-0 flex-col border-r border-border bg-background`}
-      >
-        <div className="border-b border-border p-3 sm:p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h1 className="text-lg font-bold">Chats</h1>
-            <button className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted">
-              <Filter className="h-4 w-4" />
-            </button>
-          </div>
-          <p className="mb-3 rounded-md bg-muted/50 px-2.5 py-1.5 text-[11px] text-muted-foreground">
-            Conversaciones iniciales. Así se verán cuando conectes tus canales.
-          </p>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="Buscar"
-              className="h-9 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:bg-background"
+  if (loadingChats) return <ChatsSkeleton />;
+
+  /* ============ MOBILE rendering ============ */
+  const MobileView = (
+    <div className="relative flex h-full w-full overflow-hidden md:hidden">
+      {/* Screen 1 — list. One outer scroll container with native sticky
+          header. Filters scroll out as content; the title bar stays
+          pinned by the browser compositor — zero JS, zero flicker. */}
+      {mobileScreen === "list" && (
+        <motion.div
+          key="m-list"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="scrollbar-clerivo flex h-full w-full flex-col overflow-y-auto bg-white"
+        >
+          <MobileListHeader />
+          {SearchAndFilters("mobile")}
+          <ConversationList list={filtered} activeId={activeId} onOpen={openConversation} inline />
+        </motion.div>
+      )}
+
+      {/* Screen 2 — conversation */}
+      <AnimatePresence>
+        {mobileScreen === "chat" && active && (
+          <motion.div
+            key="m-chat"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ duration: 0.28, ease: "easeOut" }}
+            className="absolute inset-0 flex flex-col bg-[var(--cv-color-bg)]"
+          >
+            <ChatHeader
+              conv={active}
+              agentLabel={agentLabel}
+              onBack={() => setMobileScreen("list")}
+              onToggleHandler={toggleHandler}
+              onOpenInfo={() => setMobileScreen("info")}
+              compact
             />
+            <MessagesArea conv={active} scrollRef={scrollRef} />
+            {active.handler === "bot" && <AutomaticBanner onTakeOver={toggleHandler} />}
+            <Composer
+              value={draft}
+              onChange={setDraft}
+              onSend={send}
+              disabled={active.handler === "bot" || sending}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Screen 3 — info */}
+      <AnimatePresence>
+        {mobileScreen === "info" && active && (
+          <motion.div
+            key="m-info"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ duration: 0.28, ease: "easeOut" }}
+            className="absolute inset-0 flex flex-col bg-[var(--cv-color-bg)]"
+          >
+            <CustomerInfoHeader
+              onBack={() => setMobileScreen("chat")}
+              onClose={() => setMobileScreen("list")}
+            />
+            <CustomerInfoBody conv={active} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+
+  /* ============ DESKTOP rendering ============ */
+  const DesktopView = (
+    <div className="hidden h-full w-full md:flex">
+      {/* LEFT — chat list */}
+      <aside className="flex h-full w-[340px] shrink-0 flex-col border-r border-[var(--cv-color-border)] bg-white">
+        <div className="px-4 pt-4">
+          <h1
+            className="text-[20px] font-extrabold leading-tight text-[var(--cv-color-text-primary)]"
+            style={{ fontFamily: "var(--font-heading)" }}
+          >
+            Chats
+          </h1>
+          <p className="mt-0.5 text-[12.5px] text-[var(--cv-color-text-secondary)]">
+            Organizá conversaciones y detectá oportunidades.
+          </p>
+        </div>
+        {SearchAndFilters("desktop")}
+        <ConversationList list={filtered} activeId={activeId} onOpen={openConversation} />
+      </aside>
+
+      {/* CENTER — conversation */}
+      {active ? (
+        <section className="flex h-full flex-1 min-w-0 flex-col bg-[var(--cv-color-bg)]">
+          <ChatHeader
+            conv={active}
+            agentLabel={agentLabel}
+            onToggleHandler={toggleHandler}
+            onOpenInfo={() => setShowInfo((v) => !v)}
+            infoOpen={showInfo}
+          />
+          <MessagesArea conv={active} scrollRef={scrollRef} />
+          {active.handler === "bot" && <AutomaticBanner onTakeOver={toggleHandler} />}
+          <Composer
+            value={draft}
+            onChange={setDraft}
+            onSend={send}
+            disabled={active.handler === "bot" || sending}
+          />
+        </section>
+      ) : (
+        <section className="flex h-full flex-1 min-w-0 items-center justify-center bg-[var(--cv-color-bg)] px-6 text-center">
+          <div>
+            <MessageCircle className="mx-auto h-9 w-9 text-[var(--cv-color-text-muted)]" />
+            <p className="mt-3 text-sm font-semibold text-[var(--cv-color-text-primary)]">
+              Sin conversaciones
+            </p>
+            <p className="mt-1 max-w-xs text-xs text-[var(--cv-color-text-muted)]">
+              Cuando lleguen chats reales aparecerán acá.
+            </p>
           </div>
-          <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1">
-            {([
-              { key: "all", label: "Todos", count: counts.all },
-              { key: "whatsapp", label: "WhatsApp", count: counts.whatsapp },
-              { key: "instagram", label: "Instagram", count: counts.instagram },
-            ] as const).map(t => {
-              const isActive = channel === t.key;
-              return (
-                <button
-                  key={t.key}
-                  onClick={() => setChannel(t.key as Channel)}
-                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition ${
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground hover:bg-muted/70"
-                  }`}
-                >
-                  {t.label}
-                  <span className={`rounded-full px-1.5 text-[10px] ${isActive ? "bg-primary-foreground/20" : "bg-background/60"}`}>
-                    {t.count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+        </section>
+      )}
+
+      {/* RIGHT — customer info (slide-in) */}
+      <AnimatePresence>
+        {showInfo && active && (
+          <motion.aside
+            key="info-panel"
+            initial={{ x: 320, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 320, opacity: 0 }}
+            transition={{ duration: 0.28, ease: "easeOut" }}
+            className="flex h-full w-[300px] shrink-0 flex-col border-l border-[var(--cv-color-border)] bg-white"
+          >
+            <CustomerInfoHeader onBack={() => setShowInfo(false)} />
+            <CustomerInfoBody conv={active} />
+          </motion.aside>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+
+  /* ============ Inline sub-components (closures over state) ============ */
+
+  /** Converts a vertical mouse wheel event into horizontal scroll on the
+   *  current target. Lets desktop users without a horizontal-capable
+   *  input (regular mouse wheel) navigate the channel + leads chip rows.
+   *  Only acts when the user is not pressing shift (browser already
+   *  handles shift+wheel as horizontal). */
+  function wheelToHorizontalScroll(e: React.WheelEvent<HTMLDivElement>) {
+    if (e.shiftKey) return;
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    e.currentTarget.scrollLeft += e.deltaY;
+  }
+
+  /** Mobile list header — sticky top, no filter icon (per spec).
+   *  Stays visible while the filters section below collapses on scroll. */
+  function MobileListHeader() {
+    return (
+      <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-[var(--cv-color-border)] bg-white px-4 py-3">
+        <Link
+          to="/app/dashboard"
+          aria-label="Volver al panel"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-[var(--cv-color-border)] bg-white text-[var(--cv-color-text-primary)] hover:bg-[var(--cv-color-bg)]"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Link>
+        <div className="min-w-0 flex-1">
+          <h1
+            className="text-[20px] font-extrabold leading-tight text-[var(--cv-color-text-primary)]"
+            style={{ fontFamily: "var(--font-heading)" }}
+          >
+            Chats
+          </h1>
+          <p className="truncate text-[12px] text-[var(--cv-color-text-secondary)]">
+            Organizá conversaciones y detectá oportunidades.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  /** Renders the search + channel chips + leads filter. Takes an explicit
+   *  `mode` so that the dropdown ref / mobile chip row are each rendered
+   *  ONLY ONCE in the DOM. Previously this component was rendered twice
+   *  (once for desktop, once for mobile) and both instances attached
+   *  themselves to the same `leadsDropdownRef`. Whichever mounted last
+   *  won — typically the mobile (hidden) copy — which made the
+   *  click-outside listener mark every chip click as "outside" and
+   *  close the panel instead of applying the filter. Splitting by mode
+   *  guarantees the ref attaches to the single visible dropdown.
+   *
+   *  Also: this is now called as a plain function (`SearchAndFilters("...")`)
+   *  rather than rendered as JSX `<SearchAndFilters />`. Because the
+   *  function is defined inside `ChatsInner`, a fresh function reference
+   *  is created on every render — used as a JSX component that would
+   *  force React to unmount/remount the whole subtree on every state
+   *  change. Calling it as a function inlines the JSX directly, so
+   *  React's diff sees stable DOM and keeps refs / focus intact. */
+  function SearchAndFilters(mode: "desktop" | "mobile") {
+    return (
+      <div className="px-4 py-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--cv-color-text-muted)]" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar conversaciones"
+            className="h-10 w-full rounded-[10px] border border-[var(--cv-color-border)] bg-white pl-9 pr-3 text-[13px] text-[var(--cv-color-text-primary)] placeholder:text-[var(--cv-color-text-muted)] focus:border-[var(--cv-color-primary)] focus:outline-none focus:ring-[3px] focus:ring-[var(--cv-color-primary)]/10"
+          />
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {filtered.length === 0 && (
-            <div className="p-8 text-center text-sm text-muted-foreground">Sin conversaciones</div>
-          )}
-          {filtered.map(c => {
-            const isActive = c.id === activeId;
-            const Ch = channelMeta[c.channel].icon;
+        {/* Channel chips — smaller pills so the 3 fit in the 340px column,
+            with horizontal scroll fallback if they ever overflow. */}
+        <div
+          className="scrollbar-hide mt-3 flex gap-1.5 overflow-x-auto whitespace-nowrap"
+          onWheel={wheelToHorizontalScroll}
+        >
+          {(["all", "whatsapp", "instagram"] as const).map((k) => {
+            const isActive = channel === k;
+            const label = k === "all" ? "Todos" : channelMeta[k].label;
             return (
               <button
-                key={c.id}
-                onClick={() => openConversation(c.id)}
-                className={`flex w-full items-start gap-3 border-b border-border/60 px-3 py-3 text-left transition ${
-                  isActive ? "bg-primary/5" : "hover:bg-muted/50"
+                key={k}
+                onClick={() => setChannel(k)}
+                className={`flex h-7 shrink-0 items-center gap-1 rounded-full border px-2 text-[12px] font-semibold transition ${
+                  isActive
+                    ? "border-[var(--cv-color-primary)] bg-[var(--cv-color-primary)] text-white"
+                    : "border-[var(--cv-color-border)] bg-white text-[var(--cv-color-text-primary)] hover:bg-[var(--cv-color-bg)]"
                 }`}
               >
-                <div className="relative shrink-0">
-                  <div className={`flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br text-sm font-semibold text-white ${c.avatarColor}`}>
-                    {c.initials}
-                  </div>
-                  <span className={`absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full ring-2 ring-background ${channelMeta[c.channel].color}`}>
-                    <Ch className="h-3 w-3" />
-                  </span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-semibold">{c.name}</p>
-                    <span className={`shrink-0 text-[11px] ${c.unread ? "text-primary font-semibold" : "text-muted-foreground"}`}>{c.time}</span>
-                  </div>
-                  <div className="mt-0.5 flex items-center justify-between gap-2">
-                    <p className="truncate text-xs text-muted-foreground">{c.lastMessage}</p>
-                    {c.unread > 0 && (
-                      <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
-                        {c.unread}
-                      </span>
-                    )}
-                  </div>
-                  {c.tag && (
-                    <span className={`mt-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${tagTone[c.tag.tone]}`}>
-                      {c.tag.label}
-                    </span>
-                  )}
-                </div>
+                {k === "whatsapp" && (
+                  <MessageCircle className={`h-3 w-3 ${isActive ? "" : "text-[#25D366]"}`} />
+                )}
+                {k === "instagram" && (
+                  <Instagram className={`h-3 w-3 ${isActive ? "" : "text-[#E4405F]"}`} />
+                )}
+                {label}
+                <span
+                  className={`-mr-0.5 rounded-full px-1.5 text-[10px] font-bold ${
+                    isActive
+                      ? "bg-white/20"
+                      : "bg-[var(--cv-color-bg)] text-[var(--cv-color-text-muted)]"
+                  }`}
+                >
+                  {counts[k]}
+                </span>
               </button>
             );
           })}
         </div>
-      </aside>
 
-      {/* Panel de chat */}
-      <section className={`${showListMobile ? "hidden" : "flex"} md:flex flex-1 min-w-0 flex-col bg-surface`}>
-        {active && (
+        {/* === MOBILE leads — single horizontal scrolling row (rendered only in mobile mode) === */}
+        {mode === "mobile" && (
           <>
-            <header className="flex h-16 shrink-0 items-center gap-2 border-b border-border bg-background px-3 sm:px-4">
-              <button
-                onClick={() => setShowListMobile(true)}
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted md:hidden"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </button>
-              <div className="relative shrink-0">
-                <div className={`flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br text-sm font-semibold text-white ${active.avatarColor}`}>
-                  {active.initials}
-                </div>
-                {active.online && (
-                  <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{active.name}</p>
-                <p className="flex items-center gap-1 truncate text-[11px] text-muted-foreground">
-                  {(() => { const Ch = channelMeta[active.channel].icon; return <Ch className="h-3 w-3" />; })()}
-                  {channelMeta[active.channel].label}
-                  <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Preparado
-                  </span>
-                </p>
-              </div>
-
-              {/* Toggle bot / humano */}
-              <div className="flex items-center gap-2 rounded-full border border-border bg-background p-0.5">
-                <button
-                  onClick={() => active.handler !== "bot" && toggleHandler()}
-                  className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition sm:px-3 ${
-                    active.handler === "bot"
-                      ? "bg-gradient-primary text-primary-foreground shadow-glow"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Bot className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">{agentLabel}</span>
-                  <span className="sm:hidden">IA</span>
-                </button>
-                <button
-                  onClick={() => active.handler !== "human" && toggleHandler()}
-                  className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition sm:px-3 ${
-                    active.handler === "human"
-                      ? "bg-foreground text-background"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <User className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Humano</span>
-                  <span className="sm:hidden">Yo</span>
-                </button>
-              </div>
-
-              <button className="hidden h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted lg:flex">
-                <Phone className="h-4 w-4" />
-              </button>
-              <button className="hidden h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted lg:flex">
-                <Video className="h-4 w-4" />
-              </button>
-              <button className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted">
-                <MoreVertical className="h-4 w-4" />
-              </button>
-            </header>
-
-            {/* Mensajes */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_1px_1px,_hsl(var(--border))_1px,_transparent_0)] [background-size:24px_24px] px-3 py-4 sm:px-6">
-              <div className="mx-auto flex max-w-3xl flex-col gap-2">
-                <div className="my-2 flex justify-center">
-                  <span className="rounded-full bg-background/80 px-3 py-1 text-[10px] font-medium text-muted-foreground backdrop-blur">
-                    Conversación inicial
-                  </span>
-                </div>
-                {active.messages.map(m => {
-                  const mine = m.from !== "client";
-                  return (
-                    <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                      <div
-                        className={`group max-w-[85%] rounded-2xl px-3.5 py-2 text-sm shadow-sm sm:max-w-[70%] ${
-                          mine
-                            ? m.from === "bot"
-                              ? "rounded-br-sm bg-gradient-primary text-primary-foreground"
-                              : "rounded-br-sm bg-foreground text-background"
-                            : "rounded-bl-sm bg-background text-foreground"
-                        }`}
-                      >
-                        {m.from === "bot" && (
-                          <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider opacity-80">
-                            <Bot className="h-3 w-3" /> {agentLabel}
-                          </p>
-                        )}
-                        <p className="whitespace-pre-wrap leading-relaxed">{m.text}</p>
-                        <p className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${mine ? "opacity-70" : "text-muted-foreground"}`}>
-                          {m.time}
-                          {mine && (m.read ? <CheckCheck className="h-3 w-3" /> : <Check className="h-3 w-3" />)}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+            <p className="mt-3 text-[12px] font-bold uppercase tracking-wider text-[var(--cv-color-text-primary)]">
+              Leads
+            </p>
+            <div
+              className="scrollbar-hide mt-1.5 flex gap-1.5 overflow-x-auto whitespace-nowrap pb-0.5"
+              onWheel={wheelToHorizontalScroll}
+            >
+              {LEAD_FILTERS.map((f) => {
+                const isAll = f.key === "all";
+                const meta = isAll ? null : leadMeta[f.key as LeadStatus];
+                const isActive = leadFilter === f.key;
+                return (
+                  <button
+                    key={f.key}
+                    onClick={() => setLeadFilter(f.key)}
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-semibold transition ${
+                      isActive
+                        ? isAll
+                          ? "border-[var(--cv-color-primary)] bg-[var(--cv-color-primary)] text-white"
+                          : `${meta!.bg} ${meta!.fg} border-transparent`
+                        : "border-[var(--cv-color-border)] bg-white text-[var(--cv-color-text-secondary)] hover:bg-[var(--cv-color-bg)]"
+                    }`}
+                  >
+                    {meta && (
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-current" : meta.dot}`}
+                      />
+                    )}
+                    {f.label}
+                  </button>
+                );
+              })}
             </div>
-
-            {/* Acciones rápidas */}
-            <div className="shrink-0 border-t border-border bg-background px-3 py-2 sm:px-4">
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { icon: Sparkles, label: "Generar respuesta sugerida", msg: "Respuesta sugerida generada" },
-                  { icon: ThumbsUp, label: "Aprobar respuesta", msg: "Respuesta aprobada" },
-                  { icon: User, label: "Tomar control", msg: "Tomaste el control de la conversación", action: () => active?.handler === "bot" && toggleHandler() },
-                  { icon: CalendarClock, label: "Agendar seguimiento", msg: "Seguimiento agendado" },
-                  { icon: Flame, label: "Marcar cliente caliente", msg: "Cliente marcado como caliente" },
-                ].map((a) => (
-                  <button
-                    key={a.label}
-                    onClick={() => { a.action?.(); toast.success(a.msg); }}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition hover:border-primary/40 hover:bg-accent hover:text-foreground"
-                  >
-                    <a.icon className="h-3 w-3" />
-                    {a.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Composer */}
-            <footer className="shrink-0 border-t border-border bg-background p-3 sm:p-4">
-              {active.handler === "bot" ? (
-                <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-primary/40 bg-primary/5 px-3 py-2.5 text-xs">
-                  <p className="flex items-center gap-1.5 text-muted-foreground">
-                    <Bot className="h-3.5 w-3.5 text-primary" />
-                    {agentLabel} está respondiendo automáticamente.
-                  </p>
-                  <button
-                    onClick={toggleHandler}
-                    className="rounded-full bg-primary px-3 py-1 text-[11px] font-semibold text-primary-foreground hover:opacity-90"
-                  >
-                    Tomar control
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-end gap-2">
-                  <button className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted">
-                    <Paperclip className="h-4 w-4" />
-                  </button>
-                  <div className="relative flex-1">
-                    <textarea
-                      value={draft}
-                      onChange={e => setDraft(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          send();
-                        }
-                      }}
-                      rows={1}
-                      placeholder="Escribí un mensaje…"
-                      className="block max-h-32 min-h-10 w-full resize-none rounded-xl border border-border bg-surface px-3 py-2.5 pr-10 text-sm outline-none transition focus:border-primary focus:bg-background"
-                    />
-                    <button className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted">
-                      <Smile className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <button
-                    onClick={send}
-                    disabled={!draft.trim()}
-                    className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-primary text-primary-foreground shadow-glow transition hover:opacity-95 disabled:opacity-50"
-                  >
-                    <Send className="h-4 w-4" />
-                  </button>
-                </div>
-              )}
-            </footer>
           </>
         )}
+
+        {/* === DESKTOP leads — compact dropdown (rendered only in desktop mode) === */}
+        {mode === "desktop" && (
+          <div ref={leadsDropdownRef} className="relative mt-3">
+            {(() => {
+              const activeFilter =
+                LEAD_FILTERS.find((f) => f.key === leadFilter) ?? LEAD_FILTERS[0];
+              const isAll = activeFilter.key === "all";
+              const activeMeta = isAll ? null : leadMeta[activeFilter.key as LeadStatus];
+              return (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setLeadsOpen((v) => !v)}
+                    aria-haspopup="menu"
+                    aria-expanded={leadsOpen}
+                    className={`inline-flex h-7 items-center gap-1.5 rounded-full border-[1.5px] px-3 text-[12px] font-semibold transition ${
+                      isAll
+                        ? "border-[var(--cv-color-border)] bg-white text-[var(--cv-color-text-primary)] hover:border-[var(--cv-color-primary)] hover:bg-[var(--cv-color-primary-light)]"
+                        : "border-[var(--cv-color-primary)] bg-white text-[var(--cv-color-primary)] hover:bg-[var(--cv-color-primary-light)]"
+                    }`}
+                  >
+                    {activeMeta && (
+                      <span className={`h-1.5 w-1.5 rounded-full ${activeMeta.dot}`} />
+                    )}
+                    {isAll ? "Leads" : `Leads: ${activeFilter.label}`}
+                    <ChevronDown
+                      className="h-3.5 w-3.5 transition-transform duration-200 ease-out"
+                      style={{
+                        transform: leadsOpen ? "rotate(180deg)" : "rotate(0deg)",
+                      }}
+                    />
+                  </button>
+
+                  <AnimatePresence>
+                    {leadsOpen && (
+                      <motion.div
+                        key="leads-panel"
+                        role="menu"
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        className="absolute left-0 top-[calc(100%+6px)] z-50 flex min-w-[240px] max-w-[300px] flex-wrap gap-1.5 rounded-[12px] border border-[var(--cv-color-border)] bg-[var(--cv-color-surface)] p-3"
+                        style={{
+                          boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
+                        }}
+                      >
+                        {LEAD_FILTERS.map((f) => {
+                          const dropdownIsAll = f.key === "all";
+                          const meta = dropdownIsAll ? null : leadMeta[f.key as LeadStatus];
+                          const isActive = leadFilter === f.key;
+                          return (
+                            <button
+                              key={f.key}
+                              type="button"
+                              // Only apply the filter — the panel must stay
+                              // open. Closing happens via click-outside or
+                              // Escape (handled by the useEffect above).
+                              onClick={() => setLeadFilter(f.key)}
+                              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-semibold transition ${
+                                isActive
+                                  ? dropdownIsAll
+                                    ? "border-[var(--cv-color-primary)] bg-[var(--cv-color-primary)] text-white"
+                                    : `${meta!.bg} ${meta!.fg} border-transparent`
+                                  : "border-[var(--cv-color-border)] bg-white text-[var(--cv-color-text-secondary)] hover:bg-[var(--cv-color-bg)]"
+                              }`}
+                            >
+                              {meta && (
+                                <span
+                                  className={`h-1.5 w-1.5 rounded-full ${
+                                    isActive ? "bg-current" : meta.dot
+                                  }`}
+                                />
+                              )}
+                              {f.label}
+                            </button>
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Heights are driven by a CSS class so a media query can flip
+          between the mobile formula (subtract topbar + bottom nav from
+          the dynamic viewport) and the desktop formula (only topbar).
+          Inline style would override Tailwind's md: utilities by CSS
+          spec, which was creating the empty band at the bottom of the
+          desktop view. */}
+      <style>{`
+        .chats-shell-root {
+          height: calc(100dvh - 64px - 80px);
+        }
+        @media (min-width: 768px) {
+          .chats-shell-root {
+            height: calc(100vh - 4rem);
+          }
+        }
+      `}</style>
+      <div className="chats-shell-root overflow-hidden bg-[var(--cv-color-bg)]">
+        <div className="flex h-full w-full">
+          {DesktopView}
+          {MobileView}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ============================================================
+   Conversation list — used by both desktop sidebar and mobile.
+   ============================================================ */
+function ConversationList({
+  list,
+  activeId,
+  onOpen,
+  inline,
+}: {
+  list: Conversation[];
+  activeId: string;
+  onOpen: (id: string) => void | Promise<void>;
+  /** When true, the list renders its items WITHOUT its own scroll
+   *  container — relying on a parent scroll instead. Used by the mobile
+   *  screen, where the whole page lives inside a single scroll so the
+   *  browser can natively pin the sticky header. Desktop omits it and
+   *  gets the default internal scroll. */
+  inline?: boolean;
+}) {
+  if (list.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center px-6 py-10 text-center">
+        <MessageCircle className="h-8 w-8 text-[var(--cv-color-text-muted)]" />
+        <p className="mt-3 text-[13px] font-semibold text-[var(--cv-color-text-primary)]">
+          Sin conversaciones
+        </p>
+        <p className="mt-1 text-[12px] text-[var(--cv-color-text-muted)]">
+          Cuando lleguen chats reales aparecerán acá.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className={inline ? "pb-2" : "scrollbar-clerivo flex-1 overflow-y-auto pb-2"}>
+      {list.map((c) => {
+        const isActive = c.id === activeId;
+        const ch = channelMeta[c.channel];
+        const lead = leadMeta[c.lead];
+        return (
+          <button
+            key={c.id}
+            onClick={() => onOpen(c.id)}
+            className={`group flex w-full items-start gap-2.5 border-b border-[var(--cv-color-border)]/50 border-l-[3px] px-4 py-4 text-left transition-colors duration-150 md:gap-2.5 md:px-3 md:py-2.5 ${
+              isActive
+                ? "border-l-[var(--cv-color-primary)] bg-[var(--cv-color-primary-light)]"
+                : "border-l-transparent hover:bg-[var(--cv-color-bg)]"
+            }`}
+          >
+            {/* Avatar + channel badge */}
+            <div className="relative shrink-0">
+              <div
+                className={`flex h-[52px] w-[52px] items-center justify-center rounded-full text-[15px] font-bold text-white md:h-[42px] md:w-[42px] md:text-[13px] ${c.avatarBg}`}
+              >
+                {c.initials}
+              </div>
+              <span
+                className={`absolute -bottom-0.5 -right-0.5 flex h-[20px] w-[20px] items-center justify-center rounded-full ring-2 ring-white md:h-[14px] md:w-[14px] ${ch.bg}`}
+                aria-label={ch.label}
+              >
+                {c.channel === "whatsapp" ? (
+                  <MessageCircle className="h-3 w-3 text-white md:h-[8px] md:w-[8px]" />
+                ) : (
+                  <Instagram className="h-3 w-3 text-white md:h-[8px] md:w-[8px]" />
+                )}
+              </span>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate text-[15px] font-bold leading-tight text-[var(--cv-color-text-primary)] md:text-[14px] md:font-semibold">
+                  {c.name}
+                </p>
+                <span
+                  className={`shrink-0 text-[12px] leading-tight md:text-[11px] ${
+                    c.unread > 0
+                      ? "font-bold text-[var(--cv-color-primary)]"
+                      : "text-[var(--cv-color-text-muted)]"
+                  }`}
+                >
+                  {c.time}
+                </span>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-2 md:mt-0.5">
+                <p className="truncate text-[13px] leading-snug text-[var(--cv-color-text-secondary)] md:text-[12px] md:leading-tight md:text-[var(--cv-color-text-muted)]">
+                  {c.lastMessage}
+                </p>
+                {c.unread > 0 && (
+                  <span className="flex h-[22px] min-w-[22px] shrink-0 items-center justify-center rounded-full bg-[var(--cv-color-primary)] px-1.5 text-[12px] font-bold text-white md:h-[18px] md:min-w-[18px] md:text-[11px]">
+                    {c.unread}
+                  </span>
+                )}
+              </div>
+              <span
+                className={`mt-1.5 inline-flex items-center gap-1 rounded-full px-2.5 py-[3px] text-[12px] font-semibold md:mt-1 md:h-[18px] md:px-[7px] md:py-[2px] md:text-[11px] ${lead.bg} ${lead.fg}`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${lead.dot}`} />
+                {lead.label}
+              </span>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ============================================================
+   Chat header
+   ============================================================ */
+function ChatHeader({
+  conv,
+  agentLabel,
+  onBack,
+  onToggleHandler,
+  onOpenInfo,
+  infoOpen,
+  compact,
+}: {
+  conv: Conversation;
+  agentLabel: string;
+  onBack?: () => void;
+  onToggleHandler: () => void | Promise<void>;
+  onOpenInfo: () => void;
+  infoOpen?: boolean;
+  compact?: boolean;
+}) {
+  const ch = channelMeta[conv.channel];
+  // agentLabel is currently unused inside the header — the toggle uses
+  // the short "Auto" label. Kept in the prop so the API stays stable.
+  void agentLabel;
+  return (
+    <header
+      className={`flex shrink-0 items-center gap-2 border-b border-[var(--cv-color-border)] bg-white px-3 sm:gap-3 sm:px-4 ${
+        compact ? "h-14" : "h-[60px]"
+      }`}
+    >
+      {onBack && (
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Volver"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-[var(--cv-color-border)] bg-white text-[var(--cv-color-text-primary)] hover:bg-[var(--cv-color-bg)] md:hidden"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+      )}
+      {/* Avatar + channel badge */}
+      <div className="relative shrink-0">
+        <div
+          className={`flex h-9 w-9 items-center justify-center rounded-full text-[12px] font-bold text-white sm:h-10 sm:w-10 sm:text-[13px] ${conv.avatarBg}`}
+        >
+          {conv.initials}
+        </div>
+        <span
+          className={`absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full ring-2 ring-white ${ch.bg}`}
+        >
+          {conv.channel === "whatsapp" ? (
+            <MessageCircle className="h-2 w-2 text-white" />
+          ) : (
+            <Instagram className="h-2 w-2 text-white" />
+          )}
+        </span>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p
+          className="truncate text-[13px] font-bold leading-tight text-[var(--cv-color-text-primary)] sm:text-[14px]"
+          style={{ fontFamily: "var(--font-heading)" }}
+        >
+          {conv.name}
+        </p>
+        <p className="mt-0.5 flex items-center gap-1 text-[11px] sm:gap-1.5 sm:text-[11.5px]">
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              conv.channel === "whatsapp" ? "bg-[#25D366]" : "bg-[#E4405F]"
+            }`}
+          />
+          <span
+            className={`truncate font-semibold ${
+              conv.channel === "whatsapp" ? "text-[#16A34A]" : "text-[#DC2626]"
+            }`}
+          >
+            {ch.label}
+          </span>
+        </p>
+      </div>
+
+      {/* Auto / Humano toggle — compact pill, fixed max-width on mobile */}
+      <div
+        className="flex shrink-0 items-center gap-0.5 rounded-full bg-[var(--cv-color-bg)] p-0.5"
+        role="group"
+        aria-label="Modo de respuesta"
+        style={{ maxWidth: 140 }}
+      >
+        <button
+          type="button"
+          onClick={() => conv.handler !== "bot" && onToggleHandler()}
+          className={`rounded-full px-2.5 py-1 text-[11.5px] font-semibold leading-tight transition sm:px-3 sm:text-[12px] ${
+            conv.handler === "bot"
+              ? "bg-[var(--cv-color-primary)] text-white shadow-sm"
+              : "text-[var(--cv-color-text-secondary)] hover:text-[var(--cv-color-text-primary)]"
+          }`}
+        >
+          Auto
+        </button>
+        <button
+          type="button"
+          onClick={() => conv.handler !== "human" && onToggleHandler()}
+          className={`rounded-full px-2.5 py-1 text-[11.5px] font-semibold leading-tight transition sm:px-3 sm:text-[12px] ${
+            conv.handler === "human"
+              ? "bg-[var(--cv-color-primary)] text-white shadow-sm"
+              : "text-[var(--cv-color-text-secondary)] hover:text-[var(--cv-color-text-primary)]"
+          }`}
+        >
+          Humano
+        </button>
+      </div>
+
+      <button
+        type="button"
+        onClick={onOpenInfo}
+        aria-label={infoOpen ? "Cerrar panel" : "Información del cliente"}
+        className={`flex h-9 w-9 items-center justify-center rounded-[10px] transition ${
+          infoOpen
+            ? "bg-[var(--cv-color-primary-light)] text-[var(--cv-color-primary)]"
+            : "text-[var(--cv-color-text-muted)] hover:bg-[var(--cv-color-bg)] hover:text-[var(--cv-color-text-primary)]"
+        }`}
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+    </header>
+  );
+}
+
+/* ============================================================
+   Messages area
+   ============================================================ */
+function MessagesArea({
+  conv,
+  scrollRef,
+}: {
+  conv: Conversation;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  return (
+    <div
+      ref={scrollRef}
+      // CRITICAL: min-h-0 lets flex-1 actually constrain this child inside
+      // a flex column. Without it the scroll area grows to fit content and
+      // pushes the composer below the viewport — the "invisible input" bug.
+      className="scrollbar-clerivo min-h-0 flex-1 overflow-y-auto bg-[var(--cv-color-bg)] px-4 py-4"
+    >
+      <div className="mx-auto flex max-w-2xl flex-col gap-3">
+        {conv.messages.map((m) => {
+          const isClient = m.from === "client";
+          if (isClient) {
+            return (
+              <motion.div
+                key={m.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2 }}
+                className="flex justify-start"
+              >
+                <div className="max-w-[80%]">
+                  <div className="rounded-[14px] rounded-tl-[4px] border border-[var(--cv-color-border)] bg-white px-4 py-2.5 text-[13.5px] leading-relaxed text-[var(--cv-color-text-primary)]">
+                    {m.text}
+                  </div>
+                  <p className="mt-1 pl-1 text-[10.5px] text-[var(--cv-color-text-muted)]">
+                    {m.time}
+                  </p>
+                </div>
+              </motion.div>
+            );
+          }
+          // bot or human → align right
+          const isBot = m.from === "bot";
+          return (
+            <motion.div
+              key={m.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+              className="flex justify-end"
+            >
+              <div className="max-w-[80%]">
+                <div className="rounded-[14px] rounded-tr-[4px] bg-[var(--cv-color-primary)] px-4 py-2.5 text-[13.5px] leading-relaxed text-white">
+                  {isBot && (
+                    <p className="mb-1 flex items-center gap-1.5 text-[11px] font-bold opacity-85">
+                      <Sparkles className="h-3 w-3" /> CLERIVO
+                    </p>
+                  )}
+                  <p className="whitespace-pre-wrap">{m.text}</p>
+                </div>
+                <p className="mt-1 flex items-center justify-end gap-1 pr-1 text-[10.5px] text-[var(--cv-color-text-muted)]">
+                  {m.time} <CheckCheck className="h-3 w-3" />
+                </p>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   "CLERIVO está respondiendo automáticamente" banner
+   ============================================================ */
+function AutomaticBanner({ onTakeOver }: { onTakeOver: () => void | Promise<void> }) {
+  return (
+    <div className="shrink-0 border-t border-[var(--cv-color-border)] bg-white px-4 py-2.5">
+      <div className="flex items-center justify-between gap-3 rounded-[10px] border border-[var(--cv-color-border)] bg-[var(--cv-color-primary-light)] px-3.5 py-2.5">
+        <div className="flex items-start gap-2.5">
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cv-color-primary)]" />
+          <div>
+            <p className="text-[12.5px] font-bold text-[var(--cv-color-text-primary)]">
+              CLERIVO está respondiendo automáticamente.
+            </p>
+            <p className="text-[11.5px] text-[var(--cv-color-text-secondary)]">
+              El agente usa las reglas y el tono definidos para esta conversación.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onTakeOver}
+          className="shrink-0 rounded-[8px] border-[1.5px] border-[var(--cv-color-primary)] bg-white px-3 py-1.5 text-[12px] font-semibold text-[var(--cv-color-primary)] transition hover:bg-[var(--cv-color-primary-light)]"
+        >
+          Tomar control
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Message composer
+   ============================================================ */
+function Composer({
+  value,
+  onChange,
+  onSend,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSend: () => void | Promise<void>;
+  disabled?: boolean;
+}) {
+  return (
+    <footer className="shrink-0 border-t border-[var(--cv-color-border)] bg-white px-3 py-3 sm:px-4">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!value.trim()) return;
+          onSend();
+        }}
+        className="flex items-center gap-2"
+      >
+        <button
+          type="button"
+          aria-label="Adjuntar archivo"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] text-[var(--cv-color-text-muted)] hover:bg-[var(--cv-color-bg)] hover:text-[var(--cv-color-text-primary)]"
+        >
+          <Paperclip className="h-4 w-4" />
+        </button>
+        <div className="relative flex-1">
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            disabled={disabled}
+            placeholder="Escribí un mensaje..."
+            className="h-11 w-full rounded-[12px] border border-[var(--cv-color-border)] bg-white pl-4 pr-12 text-[13.5px] text-[var(--cv-color-text-primary)] placeholder:text-[var(--cv-color-text-muted)] focus:border-[var(--cv-color-primary)] focus:outline-none focus:ring-[3px] focus:ring-[var(--cv-color-primary)]/10 disabled:bg-[var(--cv-color-bg)] disabled:opacity-50"
+          />
+          <button
+            type="button"
+            aria-label="Emoji"
+            disabled={disabled}
+            className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-[var(--cv-color-text-muted)] hover:bg-[var(--cv-color-bg)] disabled:opacity-50"
+          >
+            <Smile className="h-4 w-4" />
+          </button>
+        </div>
+        <button
+          type="submit"
+          aria-label="Enviar"
+          disabled={disabled || !value.trim()}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] bg-[var(--cv-color-primary)] text-white transition-all duration-150 hover:bg-[var(--cv-color-primary-hover)] hover:scale-105 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+        >
+          <Send className="h-4 w-4" />
+        </button>
+      </form>
+    </footer>
+  );
+}
+
+/* ============================================================
+   Customer info header + body
+   ============================================================ */
+function CustomerInfoHeader({ onBack, onClose }: { onBack: () => void; onClose?: () => void }) {
+  return (
+    <header className="flex h-[60px] shrink-0 items-center gap-3 border-b border-[var(--cv-color-border)] bg-white px-4">
+      <button
+        type="button"
+        onClick={onBack}
+        aria-label="Cerrar panel"
+        className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[var(--cv-color-border)] bg-white text-[var(--cv-color-text-primary)] hover:bg-[var(--cv-color-bg)]"
+      >
+        <ArrowLeft className="h-4 w-4" />
+      </button>
+      <div className="min-w-0 flex-1">
+        <p
+          className="text-[14px] font-bold leading-tight text-[var(--cv-color-text-primary)]"
+          style={{ fontFamily: "var(--font-heading)" }}
+        >
+          Información del cliente
+        </p>
+        <p className="text-[11px] text-[var(--cv-color-text-muted)]">
+          Resumen automático generado por CLERIVO
+        </p>
+      </div>
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Cerrar"
+          className="flex h-9 w-9 items-center justify-center rounded-[10px] text-[var(--cv-color-text-muted)] hover:bg-[var(--cv-color-bg)] hover:text-[var(--cv-color-text-primary)] md:hidden"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
+    </header>
+  );
+}
+
+function CustomerInfoBody({ conv }: { conv: Conversation }) {
+  const info = conv.info;
+  const ch = channelMeta[conv.channel];
+  const lead = leadMeta[conv.lead];
+  const lastClient = [...conv.messages].reverse().find((m) => m.from === "client");
+
+  // Helper to render a labeled row with icon + label + value
+  const Row = ({
+    icon: Icon,
+    label,
+    value,
+    valuePill,
+  }: {
+    icon: typeof HelpCircle;
+    label: string;
+    value?: string;
+    valuePill?: boolean;
+  }) => {
+    if (!value) return null;
+    return (
+      <div className="flex items-start gap-2.5 py-2">
+        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cv-color-text-muted)]" />
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-medium text-[var(--cv-color-text-muted)]">{label}</p>
+          {valuePill ? (
+            <span className="mt-1 inline-block rounded-full bg-[var(--cv-color-primary-light)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--cv-color-primary)]">
+              {value}
+            </span>
+          ) : (
+            <p className="mt-0.5 text-[13px] font-medium text-[var(--cv-color-text-primary)]">
+              {value}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="scrollbar-clerivo flex-1 space-y-3 overflow-y-auto bg-[var(--cv-color-bg)] p-3">
+      {/* Datos principales */}
+      <div className="cv-card p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <User className="h-4 w-4 text-[var(--cv-color-primary)]" />
+          <h3
+            className="text-[13px] font-bold text-[var(--cv-color-text-primary)]"
+            style={{ fontFamily: "var(--font-heading)" }}
+          >
+            Datos principales
+          </h3>
+        </div>
+        <div className="flex items-start gap-3">
+          <div className="relative shrink-0">
+            <div
+              className={`flex h-12 w-12 items-center justify-center rounded-full text-[14px] font-bold text-white ${conv.avatarBg}`}
+            >
+              {conv.initials}
+            </div>
+            <span
+              className={`absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full ring-2 ring-white ${ch.bg}`}
+            >
+              {conv.channel === "whatsapp" ? (
+                <MessageCircle className="h-2.5 w-2.5 text-white" />
+              ) : (
+                <Instagram className="h-2.5 w-2.5 text-white" />
+              )}
+            </span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p
+              className="text-[15px] font-extrabold text-[var(--cv-color-text-primary)]"
+              style={{ fontFamily: "var(--font-heading)" }}
+            >
+              {conv.name}
+            </p>
+            {info?.phone && (
+              <p className="mt-1 flex items-center gap-1.5 text-[12px] text-[var(--cv-color-text-secondary)]">
+                <Phone className="h-3 w-3" /> {info.phone}
+              </p>
+            )}
+            <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-[var(--cv-color-text-secondary)]">
+              {conv.channel === "whatsapp" ? (
+                <MessageCircle className="h-3 w-3" />
+              ) : (
+                <Instagram className="h-3 w-3" />
+              )}
+              {ch.label}
+            </p>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${lead.bg} ${lead.fg}`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${lead.dot}`} />
+            {lead.label}
+          </span>
+          {info?.oportunidad && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#F0FDF4] px-2.5 py-0.5 text-[11px] font-semibold text-[#16A34A]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#16A34A]" />
+              Oportunidad activa
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Resumen automático */}
+      {info?.resumen && (
+        <div className="cv-card p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-[var(--cv-color-primary)]" />
+            <h3
+              className="text-[13px] font-bold text-[var(--cv-color-text-primary)]"
+              style={{ fontFamily: "var(--font-heading)" }}
+            >
+              Resumen automático
+            </h3>
+          </div>
+          <p className="text-[12.5px] leading-relaxed text-[var(--cv-color-text-secondary)]">
+            {info.resumen}
+          </p>
+        </div>
+      )}
+
+      {/* Información clave */}
+      <div className="cv-card p-4">
+        <div className="mb-1 flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-[var(--cv-color-primary)]" />
+          <h3
+            className="text-[13px] font-bold text-[var(--cv-color-text-primary)]"
+            style={{ fontFamily: "var(--font-heading)" }}
+          >
+            Información clave
+          </h3>
+        </div>
+        <div className="divide-y divide-[var(--cv-color-border)]">
+          <Row icon={HelpCircle} label="Consulta principal" value={info?.consulta} />
+          <Row icon={Target} label="Intención detectada" value={info?.intencion} valuePill />
+          <Row icon={ShoppingBag} label="Producto / interés" value={info?.producto} valuePill />
+          <Row icon={MessageCircle} label="Último mensaje" value={lastClient?.text} />
+          <Row icon={Clock} label="Última interacción" value={conv.time} />
+        </div>
+      </div>
+
+      {/* Próxima acción sugerida */}
+      {info?.proximaAccion && (
+        <div className="rounded-[16px] border border-[var(--cv-color-border)] bg-[var(--cv-color-primary-light)] p-4">
+          <div className="mb-1.5 flex items-center gap-2">
+            <Lightbulb className="h-4 w-4 text-[var(--cv-color-primary)]" />
+            <h3
+              className="text-[13px] font-bold text-[var(--cv-color-primary-hover)]"
+              style={{ fontFamily: "var(--font-heading)" }}
+            >
+              Próxima acción sugerida
+            </h3>
+          </div>
+          <p className="text-[12.5px] leading-relaxed text-[var(--cv-color-text-secondary)]">
+            {info.proximaAccion}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Skeleton shown while ChatsPage loads remote data. */
+function ChatsSkeleton() {
+  return (
+    <div className="flex h-[calc(100vh-4rem-5rem)] overflow-hidden md:h-[calc(100vh-4rem)]">
+      {/* Conversation list */}
+      <aside className="hidden w-80 shrink-0 flex-col border-r border-border bg-background md:flex lg:w-96">
+        <div className="border-b border-border p-4">
+          <Skeleton className="mb-3 h-6 w-24" />
+          <Skeleton className="h-9 w-full rounded-lg" />
+          <div className="mt-3 flex gap-1.5">
+            <Skeleton className="h-6 w-16 rounded-full" />
+            <Skeleton className="h-6 w-24 rounded-full" />
+            <Skeleton className="h-6 w-24 rounded-full" />
+          </div>
+        </div>
+        <div className="flex-1 space-y-1 p-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-start gap-3 px-2 py-3">
+              <Skeleton className="h-11 w-11 shrink-0 rounded-full" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-full" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </aside>
+
+      {/* Active chat */}
+      <section className="flex flex-1 min-w-0 flex-col bg-surface">
+        <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
+          <Skeleton className="h-10 w-10 rounded-full" />
+          <div className="flex-1 space-y-1.5">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+        </header>
+        <div className="flex-1 space-y-3 px-3 py-4 sm:px-6">
+          <div className="mx-auto flex max-w-3xl flex-col gap-3">
+            <div className="flex justify-start">
+              <Skeleton className="h-12 w-1/2 rounded-2xl" />
+            </div>
+            <div className="flex justify-end">
+              <Skeleton className="h-12 w-2/3 rounded-2xl" />
+            </div>
+            <div className="flex justify-start">
+              <Skeleton className="h-10 w-1/3 rounded-2xl" />
+            </div>
+          </div>
+        </div>
+        <footer className="shrink-0 border-t border-border bg-background p-3 sm:p-4">
+          <Skeleton className="h-12 w-full rounded-xl" />
+        </footer>
       </section>
-      <ClerivoBubble
-        id="chats"
-        message="Así se verán tus conversaciones cuando prepares tus canales."
-        ctaLabel="Ver ejemplo"
-        onCtaClick={() => setActiveId(conversations[0]?.id ?? activeId)}
-      />
     </div>
   );
 }

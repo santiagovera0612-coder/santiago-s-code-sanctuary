@@ -5,15 +5,24 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Sora", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", "Sora", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
 
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.5rem;
-  --radius-xl: 0.5rem;
-  --radius-2xl: 0.5rem;
-  --radius-3xl: 0.75rem;
+  /* Progressive radius scale — gives hierarchy to surfaces.
+     sm → form controls, badges
+     md → buttons, small cards
+     lg → main cards
+     xl → hero / dialog cards
+     2xl → wrapper panels
+     3xl → showcase blocks */
+  --radius-sm: 0.5rem;    /* 8px  */
+  --radius-md: 0.75rem;   /* 12px */
+  --radius-lg: 1rem;      /* 16px */
+  --radius-xl: 1.25rem;   /* 20px */
+  --radius-2xl: 1.5rem;   /* 24px */
+  --radius-3xl: 2rem;     /* 32px */
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -57,30 +66,55 @@
 :root {
   --radius: 0.5rem;
 
-  --background: #f8fafc;
-  --foreground: #020d24;
+  --background: #f8f9fc;
+  --foreground: #111827;
 
-  --surface: #f8fafc;
+  --surface: #f8f9fc;
   --surface-elevated: #ffffff;
 
   --card: #ffffff;
-  --card-foreground: #020d24;
+  --card-foreground: #111827;
 
   --popover: #ffffff;
-  --popover-foreground: #020d24;
+  --popover-foreground: #111827;
 
-  --primary: #8d6dfc;
-  --primary-foreground: #020d24;
-  --primary-glow: #8d6dfc;
+  --primary: #4F46E5;
+  --primary-foreground: #ffffff;
+  --primary-glow: #6366F1;
 
-  --secondary: #f3f0ff;
-  --secondary-foreground: #061733;
+  /* === CLERIVO design tokens === */
+  --cv-color-primary: #4F46E5;
+  --cv-color-primary-light: #EEF2FF;
+  --cv-color-primary-hover: #4338CA;
+  --cv-color-accent-orange: #F97316;
+  --cv-color-accent-orange-bg: #FFF7ED;
+  --cv-color-accent-green: #16A34A;
+  --cv-color-accent-green-bg: #ECFDF5;
+  --cv-color-accent-red: #DC2626;
+  --cv-color-accent-red-bg: #FEF2F2;
+  --cv-color-accent-blue: #2563EB;
+  --cv-color-accent-blue-bg: #EFF6FF;
+  --cv-color-bg: #F8F9FC;
+  --cv-color-surface: #FFFFFF;
+  --cv-color-border: #E5E7EB;
+  --cv-color-border-strong: #D1D5DB;
+  --cv-color-text-primary: #111827;
+  --cv-color-text-secondary: #6B7280;
+  --cv-color-text-muted: #9CA3AF;
+  --cv-radius-card: 16px;
+  --cv-radius-btn: 10px;
+  --cv-radius-badge: 999px;
+  --cv-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 16px rgba(0, 0, 0, 0.04);
+  --cv-shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(79, 70, 229, 0.06);
 
-  --muted: #f3f0ff;
-  --muted-foreground: #64748b;
+  --secondary: #EEF2FF;
+  --secondary-foreground: #111827;
 
-  --accent: #f3f0ff;
-  --accent-foreground: #061733;
+  --muted: #F3F4F6;
+  --muted-foreground: #6B7280;
+
+  --accent: #EEF2FF;
+  --accent-foreground: #4338CA;
 
   --destructive: oklch(0.6 0.22 25);
   --destructive-foreground: oklch(0.99 0 0);
@@ -94,23 +128,22 @@
   --info: #8d6dfc;
   --info-foreground: oklch(0.99 0 0);
 
-  --border: #e6eaf2;
-  --input: #e6eaf2;
-  --ring: #8d6dfc;
+  --border: #E5E7EB;
+  --input: #E5E7EB;
+  --ring: #4F46E5;
 
   --gradient-primary: linear-gradient(
     135deg,
-    #f3f0ff -18%,
-    #a78bfa 18%,
-    #8d6dfc 72%,
-    #8d6dfc 100%
+    #6366F1 0%,
+    #4F46E5 60%,
+    #4338CA 100%
   );
-  --gradient-subtle: linear-gradient(180deg, #ffffff, #f8fafc);
+  --gradient-subtle: linear-gradient(180deg, #ffffff, #F8F9FC);
   --gradient-mesh: linear-gradient(
     135deg,
-    #f8fafc 0%,
+    #F8F9FC 0%,
     #ffffff 42%,
-    #f3f0ff 100%
+    #EEF2FF 100%
   );
 
   --shadow-xs: 0 1px 2px rgb(2 13 36 / 0.04);
@@ -120,13 +153,13 @@
   --shadow-glow: 0 18px 46px -26px rgb(141 109 252 / 0.5);
 
   --sidebar: #ffffff;
-  --sidebar-foreground: #020d24;
-  --sidebar-primary: #8d6dfc;
-  --sidebar-primary-foreground: #020d24;
-  --sidebar-accent: #f3f0ff;
-  --sidebar-accent-foreground: #061733;
-  --sidebar-border: #e6eaf2;
-  --sidebar-ring: #8d6dfc;
+  --sidebar-foreground: #111827;
+  --sidebar-primary: #4F46E5;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #EEF2FF;
+  --sidebar-accent-foreground: #4338CA;
+  --sidebar-border: #E5E7EB;
+  --sidebar-ring: #4F46E5;
 }
 
 .dark {
@@ -463,10 +496,10 @@
     scrollbar-width: none;
   }
 
-  /* CLERIVO branded scrollbar — for the sidebar */
+  /* Sidebar scrollbar — sober, flat violet (no gradient). */
   .scrollbar-clerivo {
     scrollbar-width: thin;
-    scrollbar-color: color-mix(in oklab, var(--primary) 55%, transparent) transparent;
+    scrollbar-color: color-mix(in oklab, var(--primary) 35%, transparent) transparent;
   }
   .scrollbar-clerivo::-webkit-scrollbar {
     width: 6px;
@@ -476,15 +509,12 @@
     background: transparent;
   }
   .scrollbar-clerivo::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, var(--primary), var(--primary-glow));
+    background: color-mix(in oklab, var(--primary) 35%, transparent);
     border-radius: 9999px;
     border: none;
-    background-clip: padding-box;
-    opacity: 0.65;
   }
   .scrollbar-clerivo::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, var(--primary-glow), var(--primary));
-    opacity: 1;
+    background: color-mix(in oklab, var(--primary) 55%, transparent);
   }
 
   /* Subtle dotted bg */
@@ -588,14 +618,280 @@
     }
   }
 
-  .pulse-dot::before {
+  /* Reusable icon container — replaces the overused
+     `bg-gradient-primary shadow-glow` pattern that was applied to every
+     section icon, avatar tile and badge.  Use the gradient ONLY for the
+     primary CTA of a screen, the brand logo, and hero blocks. */
+  .icon-tile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 2.5rem;
+    width: 2.5rem;
+    border-radius: var(--radius-md);
+    background: var(--color-accent);
+    color: var(--color-primary);
+    flex-shrink: 0;
+  }
+  .icon-tile-sm {
+    height: 2rem;
+    width: 2rem;
+    border-radius: var(--radius-sm);
+  }
+  .icon-tile-lg {
+    height: 3rem;
+    width: 3rem;
+    border-radius: var(--radius-lg);
+  }
+
+  /* ===========================================================
+     CLERIVO Dashboard primitives
+     - cv-card → main surface card, white + subtle shadow + 16px radius
+     - cv-tile → smaller filled tile (KPI icons, step circles)
+     - cv-badge variants → status pills (pending, hot, interested, success)
+     - cv-btn-primary → solid indigo CTA
+     - cv-step-number → numbered circle for "Primeros pasos"
+     =========================================================== */
+  .cv-card {
+    background: var(--cv-color-surface);
+    border: 1px solid var(--cv-color-border);
+    border-radius: var(--cv-radius-card);
+    box-shadow: var(--cv-shadow-card);
+    transition: box-shadow 0.25s ease, transform 0.25s ease, border-color 0.25s ease;
+  }
+  .cv-card-hover:hover {
+    box-shadow: var(--cv-shadow-card-hover);
+    border-color: color-mix(in oklab, var(--cv-color-primary) 25%, var(--cv-color-border));
+  }
+  .dark .cv-card {
+    background: var(--surface-elevated);
+    border-color: var(--border);
+  }
+
+  .cv-tile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 2.75rem;
+    width: 2.75rem;
+    border-radius: 14px;
+    background: var(--cv-color-primary-light);
+    color: var(--cv-color-primary);
+    flex-shrink: 0;
+  }
+  .cv-tile-lg {
+    height: 3.5rem;
+    width: 3.5rem;
+    border-radius: 18px;
+  }
+  .dark .cv-tile {
+    background: color-mix(in oklab, var(--primary) 18%, transparent);
+    color: var(--primary-glow);
+  }
+
+  .cv-tile-orange {
+    background: var(--cv-color-accent-orange-bg);
+    color: var(--cv-color-accent-orange);
+  }
+  .cv-tile-green {
+    background: var(--cv-color-accent-green-bg);
+    color: var(--cv-color-accent-green);
+  }
+  .cv-tile-red {
+    background: var(--cv-color-accent-red-bg);
+    color: var(--cv-color-accent-red);
+  }
+  .cv-tile-blue {
+    background: var(--cv-color-accent-blue-bg);
+    color: var(--cv-color-accent-blue);
+  }
+  .dark .cv-tile-orange {
+    background: color-mix(in oklab, var(--cv-color-accent-orange) 18%, transparent);
+    color: #FDBA74;
+  }
+  .dark .cv-tile-green {
+    background: color-mix(in oklab, var(--cv-color-accent-green) 18%, transparent);
+    color: #6EE7B7;
+  }
+  .dark .cv-tile-red {
+    background: color-mix(in oklab, var(--cv-color-accent-red) 18%, transparent);
+    color: #FCA5A5;
+  }
+  .dark .cv-tile-blue {
+    background: color-mix(in oklab, var(--cv-color-accent-blue) 18%, transparent);
+    color: #93C5FD;
+  }
+
+  .cv-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.625rem;
+    border-radius: var(--cv-radius-badge);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .cv-badge::before {
+    content: "";
+    height: 6px;
+    width: 6px;
+    border-radius: 999px;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+  .cv-badge-pending {
+    background: var(--cv-color-accent-orange-bg);
+    color: var(--cv-color-accent-orange);
+  }
+  .cv-badge-hot {
+    background: var(--cv-color-accent-red-bg);
+    color: var(--cv-color-accent-red);
+  }
+  .cv-badge-interested {
+    background: var(--cv-color-accent-blue-bg);
+    color: var(--cv-color-accent-blue);
+  }
+  .cv-badge-followup {
+    background: var(--cv-color-primary-light);
+    color: var(--cv-color-primary);
+  }
+  .cv-badge-active {
+    background: var(--cv-color-accent-green-bg);
+    color: var(--cv-color-accent-green);
+  }
+  .dark .cv-badge-pending {
+    background: color-mix(in oklab, var(--cv-color-accent-orange) 16%, transparent);
+    color: #FDBA74;
+  }
+  .dark .cv-badge-hot {
+    background: color-mix(in oklab, var(--cv-color-accent-red) 16%, transparent);
+    color: #FCA5A5;
+  }
+  .dark .cv-badge-interested {
+    background: color-mix(in oklab, var(--cv-color-accent-blue) 16%, transparent);
+    color: #93C5FD;
+  }
+  .dark .cv-badge-followup {
+    background: color-mix(in oklab, var(--primary) 18%, transparent);
+    color: var(--primary-glow);
+  }
+  .dark .cv-badge-active {
+    background: color-mix(in oklab, var(--cv-color-accent-green) 16%, transparent);
+    color: #6EE7B7;
+  }
+
+  .cv-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--cv-radius-btn);
+    background: var(--cv-color-primary);
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 0.625rem 1.25rem;
+    box-shadow: 0 1px 2px rgba(79, 70, 229, 0.15), 0 6px 16px -8px rgba(79, 70, 229, 0.4);
+    transition: background 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
+  }
+  .cv-btn-primary:hover {
+    background: var(--cv-color-primary-hover);
+    box-shadow: 0 1px 2px rgba(79, 70, 229, 0.2), 0 10px 24px -8px rgba(79, 70, 229, 0.5);
+  }
+  .cv-btn-primary:active {
+    transform: translateY(1px);
+  }
+
+  .cv-btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    border-radius: var(--cv-radius-btn);
+    background: var(--cv-color-surface);
+    color: var(--cv-color-primary);
+    font-weight: 600;
+    font-size: 13px;
+    padding: 0.5rem 0.875rem;
+    border: 1px solid var(--cv-color-border);
+    transition: background 0.2s ease, border-color 0.2s ease;
+  }
+  .cv-btn-ghost:hover {
+    background: var(--cv-color-primary-light);
+    border-color: color-mix(in oklab, var(--cv-color-primary) 35%, var(--cv-color-border));
+  }
+  .dark .cv-btn-ghost {
+    background: transparent;
+    color: var(--primary-glow);
+    border-color: var(--border);
+  }
+  .dark .cv-btn-ghost:hover {
+    background: color-mix(in oklab, var(--primary) 14%, transparent);
+  }
+
+  .cv-step-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 2rem;
+    width: 2rem;
+    border-radius: 999px;
+    background: var(--cv-color-surface);
+    border: 1px solid var(--cv-color-border);
+    color: var(--cv-color-text-secondary);
+    font-weight: 700;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .dark .cv-step-number {
+    background: transparent;
+    border-color: var(--border);
+    color: var(--muted-foreground);
+  }
+
+  .cv-divider {
+    height: 1px;
+    background: linear-gradient(to right,
+      transparent,
+      var(--cv-color-border) 12%,
+      var(--cv-color-border) 88%,
+      transparent
+    );
+  }
+
+  .cv-pulse-dot {
+    position: relative;
+    display: inline-block;
+    height: 8px;
+    width: 8px;
+    border-radius: 999px;
+    background: var(--cv-color-accent-green);
+  }
+  .cv-pulse-dot::after {
     content: "";
     position: absolute;
-    inset: 0;
-    border-radius: 9999px;
-    background: currentColor;
-    opacity: 0.6;
-    animation: pulseRing 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    inset: -3px;
+    border-radius: 999px;
+    border: 2px solid color-mix(in oklab, var(--cv-color-accent-green) 60%, transparent);
+    animation: cvPulse 1.8s ease-out infinite;
+  }
+  @keyframes cvPulse {
+    0% { opacity: 0.7; transform: scale(0.85); }
+    100% { opacity: 0; transform: scale(1.6); }
+  }
+
+  /* Override surface-card globally to match new CLERIVO style */
+  .surface-card {
+    background: var(--cv-color-surface);
+    border: 1px solid var(--cv-color-border);
+    border-radius: var(--cv-radius-card);
+    box-shadow: var(--cv-shadow-card);
+  }
+  .dark .surface-card {
+    background: var(--surface-elevated);
+    border-color: var(--border);
   }
 }
 
@@ -644,16 +940,6 @@
     transform: translateY(-8px);
   }
 }
-@keyframes pulseRing {
-  0% {
-    transform: scale(1);
-    opacity: 0.5;
-  }
-  100% {
-    transform: scale(2.4);
-    opacity: 0;
-  }
-}
 @keyframes gradientX {
   0% {
     background-position: 0% 50%;
@@ -662,36 +948,20 @@
     background-position: 200% 50%;
   }
 }
-@keyframes glowPulse {
-  0%,
-  100% {
-    box-shadow: 0 0 24px color-mix(in oklab, var(--primary) 25%, transparent);
-  }
-  50% {
-    box-shadow: 0 0 48px color-mix(in oklab, var(--primary) 50%, transparent);
-  }
+
+/* Step 7 celebration — circle stroke drawing in, then check fade-in */
+@keyframes celebStroke {
+  from { stroke-dashoffset: 252; }
+  to { stroke-dashoffset: 0; }
 }
-.animate-glow-pulse {
-  animation: glowPulse 3s ease-in-out infinite;
+@keyframes celebCheck {
+  from { opacity: 0; transform: scale(0.4); }
+  to { opacity: 1; transform: scale(1); }
 }
 
-.input {
-  height: 2.5rem;
-  width: 100%;
-  border-radius: 0.75rem;
-  border: 1px solid var(--border);
-  background-color: var(--card);
-  padding: 0 0.875rem;
-  font-size: 0.875rem;
-  color: var(--foreground);
-  outline: none;
-  transition: border-color 0.15s;
-}
-.input:focus {
-  border-color: var(--primary);
-}
-textarea.input {
-  height: auto;
-  padding: 0.625rem 0.875rem;
-  resize: vertical;
+/* Wizard "Otro" attention pulse on the fixed bottom input */
+@keyframes inputPulse {
+  0%   { transform: scale(1);    }
+  50%  { transform: scale(1.02); }
+  100% { transform: scale(1);    }
 }

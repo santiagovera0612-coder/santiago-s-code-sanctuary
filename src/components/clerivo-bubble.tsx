@@ -21,7 +21,9 @@ export function ClerivoBubble({ id, message, ctaLabel, ctaTo, onCtaClick }: Prop
         const t = setTimeout(() => setVisible(true), 400);
         return () => clearTimeout(t);
       }
-    } catch {}
+    } catch {
+      return undefined;
+    }
   }, [storageKey]);
 
   if (!visible) return null;
@@ -30,14 +32,16 @@ export function ClerivoBubble({ id, message, ctaLabel, ctaTo, onCtaClick }: Prop
     setVisible(false);
     try {
       localStorage.setItem(storageKey, "1");
-    } catch {}
+    } catch {
+      // localStorage can be unavailable in restricted browser contexts.
+    }
   };
 
   const Cta = ctaTo ? (
     <Link
       to={ctaTo}
       onClick={close}
-      className="inline-flex h-8 items-center gap-1 rounded-md bg-gradient-primary px-3 text-xs font-semibold text-primary-foreground shadow-glow transition hover:opacity-95"
+      className="inline-flex h-8 items-center gap-1 rounded-md bg-gradient-primary px-3 text-xs font-semibold text-primary-foreground transition hover:opacity-95"
     >
       {ctaLabel} <ArrowRight className="h-3 w-3" />
     </Link>
@@ -47,7 +51,7 @@ export function ClerivoBubble({ id, message, ctaLabel, ctaTo, onCtaClick }: Prop
         onCtaClick?.();
         close();
       }}
-      className="inline-flex h-8 items-center gap-1 rounded-md bg-gradient-primary px-3 text-xs font-semibold text-primary-foreground shadow-glow transition hover:opacity-95"
+      className="inline-flex h-8 items-center gap-1 rounded-md bg-gradient-primary px-3 text-xs font-semibold text-primary-foreground transition hover:opacity-95"
     >
       {ctaLabel} <ArrowRight className="h-3 w-3" />
     </button>
@@ -67,9 +71,7 @@ export function ClerivoBubble({ id, message, ctaLabel, ctaTo, onCtaClick }: Prop
           className="h-9 w-9 shrink-0 rounded-lg border border-primary/20"
         />
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">
-            CLERIVO
-          </p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">CLERIVO</p>
           <p className="mt-0.5 text-sm leading-snug text-foreground">{message}</p>
           <div className="mt-2">{Cta}</div>
         </div>

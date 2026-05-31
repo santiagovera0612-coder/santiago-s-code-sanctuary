@@ -60,17 +60,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Clerivo — Agentes de IA para tu negocio" },
+      { title: "Clerivo — Creá y probá tu Agente IA" },
       {
         name: "description",
         content:
-          "Creá tu agente de IA y respondé clientes 24/7 en WhatsApp, Instagram y tu web. Sin programar.",
+          "Diseñá tu Agente IA, definí reglas, cargá tus productos y probalo en el Simulador. WhatsApp e Instagram, próximamente.",
       },
-      { property: "og:title", content: "Clerivo — Agentes de IA para tu negocio" },
+      { property: "og:title", content: "Clerivo — Creá y probá tu Agente IA" },
       {
         property: "og:description",
         content:
-          "Automatizá atención, ventas y seguimiento de clientes con agentes de IA entrenados con tu negocio.",
+          "Creá y probá tu Agente IA para preparar la atención de tu negocio antes de salir al aire.",
       },
       { property: "og:type", content: "website" },
     ],
@@ -84,7 +84,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap",
       },
     ],
   }),

@@ -4,13 +4,11 @@ import {
   ArrowRight,
   Bot,
   MessageSquare,
-  Zap,
   ShieldCheck,
   Sparkles,
   TrendingUp,
   Clock,
   Users,
-  Check,
   ChevronRight,
   Store,
   UtensilsCrossed,
@@ -33,12 +31,12 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Diseñá tu Agente IA, definí sus reglas, cargá tu catálogo y probalo en el Simulador. Prepará WhatsApp e Instagram para cuando estén disponibles.",
+          "Diseñá tu Agente IA, definí sus reglas, cargá tus productos y probalo en el Simulador. Prepará WhatsApp e Instagram para cuando estén disponibles.",
       },
       { property: "og:title", content: "Clerivo — Creá y probá tu Agente IA" },
       {
         property: "og:description",
-        content: "Diseñá tu agente, definí reglas, cargá tu catálogo y probalo en el Simulador.",
+        content: "Diseñá tu agente, definí reglas, cargá tus productos y probalo en el Simulador.",
       },
     ],
   }),
@@ -50,7 +48,6 @@ function Landing() {
     <div className="min-h-screen bg-background">
       <Nav />
       <Hero />
-      <LogosStrip />
       <Benefits />
       <HowItWorks />
       <UseCases />
@@ -127,8 +124,8 @@ function Hero() {
             Clerivo: creá tu Agente IA en minutos
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
-            Configurá cómo debe responder, cargá tus productos y probalo en el Simulador.
-            Prepará tus canales de WhatsApp e Instagram cuando estén disponibles.
+            Configurá cómo debe responder, cargá tus productos y probalo en el Simulador. Prepará
+            tus canales de WhatsApp e Instagram cuando estén disponibles.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <Button
@@ -193,7 +190,7 @@ function HeroMockup() {
           <div className="space-y-3 border-t border-border pt-4">
             <Bubble side="user">Hola, ¿tienen la Lámpara Nórdica?</Bubble>
             <Bubble side="bot">
-              ¡Hola! Sí, la <b>Lámpara Nórdica</b> está en catálogo. ¿Querés que te pase los colores
+              ¡Hola! Sí, la <b>Lámpara Nórdica</b> está disponible. ¿Querés que te pase los colores
               disponibles y el precio?
             </Bubble>
             <Bubble side="user">Dale, contame</Bubble>
@@ -246,16 +243,6 @@ function HeroMockup() {
   );
 }
 
-function Stat({ label, value, sub }: { label: string; value: string; sub: string }) {
-  return (
-    <div>
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="font-display text-lg font-bold">{value}</p>
-      <p className="text-[10px] text-muted-foreground">{sub}</p>
-    </div>
-  );
-}
-
 function Bubble({ side, children }: { side: "user" | "bot"; children: React.ReactNode }) {
   const isUser = side === "user";
   return (
@@ -273,10 +260,6 @@ function Bubble({ side, children }: { side: "user" | "bot"; children: React.Reac
   );
 }
 
-function LogosStrip() {
-  return null;
-}
-
 function Benefits() {
   const items = [
     {
@@ -291,7 +274,7 @@ function Benefits() {
     },
     {
       icon: Users,
-      title: "Cargá tu catálogo",
+      title: "Cargá tus productos",
       text: "Sumá tus productos para que la IA los conozca.",
     },
     {
@@ -355,8 +338,8 @@ function HowItWorks() {
     },
     {
       n: "03",
-      title: "Cargá tu catálogo",
-      text: "Sumá productos para que la IA pueda responder con tu información.",
+      title: "Cargá tus productos",
+      text: "Sumá tus productos para que la IA pueda responder con tu información.",
     },
     {
       n: "04",
@@ -446,10 +429,7 @@ function Pricing() {
             Por ahora podés crear tu Agente IA, cargar productos y probarlo en el Simulador sin
             costo. Cuando habilitemos pagos te vamos a avisar.
           </p>
-          <Button
-            asChild
-            className="mt-6 bg-gradient-primary text-primary-foreground shadow-glow"
-          >
+          <Button asChild className="mt-6 bg-gradient-primary text-primary-foreground shadow-glow">
             <Link to="/register">Crear mi agente</Link>
           </Button>
         </div>
@@ -470,17 +450,20 @@ function FAQ() {
     },
     {
       q: "¿Cómo se entrena el agente?",
-      a: "Cargás tu catálogo, definís reglas y tono de respuesta. El agente usa esa información como contexto.",
+      a: "Cargás tus productos, definís reglas y tono de respuesta. El agente usa esa información como contexto.",
     },
     {
       q: "¿Puedo revisar las respuestas antes de enviarlas?",
-      a: "Sí. Te recomendamos el modo \"Responder con aprobación\" para mantener el control.",
+      a: 'Sí. Te recomendamos el modo "Responder con aprobación" para mantener el control.',
     },
     {
       q: "¿Cuánto cuesta?",
       a: "La gestión de planes y pagos estará disponible próximamente. Mientras tanto, podés usar Clerivo sin costo.",
     },
-    { q: "¿Mis datos están seguros?", a: "Sí. Tu información se guarda asociada a tu cuenta y solo vos podés acceder." },
+    {
+      q: "¿Mis datos están seguros?",
+      a: "Sí. Tu información se guarda asociada a tu cuenta y solo vos podés acceder.",
+    },
   ];
   return (
     <section id="faq" className="py-24">

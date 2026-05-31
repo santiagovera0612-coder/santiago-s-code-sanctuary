@@ -4,4 +4,11 @@
   "compatibility_date": "2025-09-24",
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/server.ts",
+  // Non-secret config. Secrets (ANTHROPIC_API_KEY, SUPABASE_SERVICE_ROLE_KEY,
+  // WHATSAPP_*, ENCRYPTION_KEY) viven en .dev.vars (local) y se cargan en
+  // producción con `wrangler secret put <NAME>`.
+  "vars": {
+    "ANTHROPIC_MODEL": "claude-sonnet-4-6",
+    "WHATSAPP_API_VERSION": "v25.0",
+  },
 }

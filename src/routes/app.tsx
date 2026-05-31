@@ -20,18 +20,26 @@ import {
   X,
   PanelLeftClose,
   PanelLeftOpen,
+  MoreHorizontal,
+  ChevronRight,
+  CreditCard,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { NotificationBell } from "@/components/notification-bell";
 import clerivoLogo from "@/assets/clerivo-logo.svg";
 import clerivoWordmark from "@/assets/clerivo-wordmark.svg";
 import clerivoWordmarkWhite from "@/assets/clerivo-wordmark-white.svg";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+  DrawerClose,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
 
 export const Route = createFileRoute("/app")({
   beforeLoad: async ({ location }) => {
@@ -55,13 +63,7 @@ const navMain = [
 
 const SIDEBAR_STATE_KEY = "clerivo:sidebar-collapsed";
 
-function SidebarNav({
-  path,
-  collapsed,
-}: {
-  path: string;
-  collapsed: boolean;
-}) {
+function SidebarNav({ path, collapsed }: { path: string; collapsed: boolean }) {
   return (
     <>
       <Link
@@ -70,33 +72,19 @@ function SidebarNav({
           collapsed ? "justify-center px-2" : "px-5"
         }`}
       >
-        <img
-          src={clerivoLogo}
-          alt="Clerivo"
-          className="h-8 w-8 shrink-0 rounded-lg"
-        />
+        <img src={clerivoLogo} alt="Clerivo" className="h-8 w-8 shrink-0 rounded-lg" />
         <span
           className={`flex items-center transition-[opacity,width] duration-200 ${
             collapsed ? "w-0 overflow-hidden opacity-0" : "w-auto opacity-100"
           }`}
         >
-          <img
-            src={clerivoWordmark}
-            alt="clerivo"
-            className="h-5 w-auto dark:hidden"
-          />
-          <img
-            src={clerivoWordmarkWhite}
-            alt="clerivo"
-            className="hidden h-5 w-auto dark:block"
-          />
+          <img src={clerivoWordmark} alt="clerivo" className="h-5 w-auto dark:hidden" />
+          <img src={clerivoWordmarkWhite} alt="clerivo" className="hidden h-5 w-auto dark:block" />
         </span>
       </Link>
 
       <nav
-        className={`scrollbar-clerivo flex-1 overflow-y-auto py-5 ${
-          collapsed ? "px-2" : "px-3"
-        }`}
+        className={`scrollbar-clerivo flex-1 overflow-y-auto py-5 ${collapsed ? "px-2" : "px-3"}`}
       >
         {!collapsed && (
           <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -116,7 +104,7 @@ function SidebarNav({
                   active
                     ? "border border-primary/20 bg-accent text-accent-foreground shadow-sm"
                     : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                } ${active && collapsed ? "shadow-glow" : ""}`}
+                }`}
               >
                 {active && !collapsed && (
                   <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-x-3 -translate-y-1/2 rounded-full bg-primary" />
@@ -249,16 +237,8 @@ function AppLayout() {
                 )}
               </button>
               <Link to="/" className="flex items-center gap-2 md:hidden">
-                <img
-                  src={clerivoLogo}
-                  alt="Clerivo"
-                  className="h-7 w-7 rounded-lg"
-                />
-                <img
-                  src={clerivoWordmark}
-                  alt="clerivo"
-                  className="h-4 w-auto dark:hidden"
-                />
+                <img src={clerivoLogo} alt="Clerivo" className="h-7 w-7 rounded-lg" />
+                <img src={clerivoWordmark} alt="clerivo" className="h-4 w-auto dark:hidden" />
                 <img
                   src={clerivoWordmarkWhite}
                   alt="clerivo"
@@ -268,6 +248,7 @@ function AppLayout() {
             </div>
             <div className="flex shrink-0 items-center gap-1 sm:gap-2">
               <ThemeToggle />
+              <NotificationBell />
               <div className="ml-1 flex items-center gap-2 border-l border-border pl-2 sm:pl-3">
                 {(() => {
                   const isInternal = !email || /demo|clerivo\.app$/i.test(email);
@@ -303,41 +284,125 @@ function AppLayout() {
             <Outlet />
           </main>
 
-          {/* Bottom nav mobile */}
-          <nav
-            className="fixed bottom-0 left-0 right-0 z-40 flex items-stretch justify-around border-t border-border bg-background/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
-            aria-label="Navegación inferior"
-          >
-            {[
-              { to: "/app/dashboard", icon: LayoutDashboard, label: "Inicio" },
-              { to: "/app/create", icon: Bot, label: "Agente" },
-              { to: "/app/simulator", icon: MessageSquare, label: "Probar" },
-              { to: "/app/chats", icon: Inbox, label: "Chats" },
-              { to: "/app/settings", icon: Settings, label: "Ajustes" },
-            ].map((item) => {
-              const active = path === item.to;
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className={`flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition ${
-                    active ? "text-primary" : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <span
-                    className={`flex h-9 w-14 items-center justify-center rounded-full transition-all duration-300 ${
-                      active ? "bg-accent text-accent-foreground shadow-sm" : ""
-                    }`}
-                  >
-                    <item.icon className="h-4 w-4" />
-                  </span>
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
+          {/* Bottom nav mobile — 4 ítems principales + 'Más' (sheet) */}
+          <BottomNav path={path} />
         </div>
       </div>
     </TooltipProvider>
+  );
+}
+
+function BottomNav({ path }: { path: string }) {
+  const mainItems = [
+    { to: "/app/dashboard", icon: LayoutDashboard, label: "Inicio" },
+    { to: "/app/create", icon: Bot, label: "Agente" },
+    { to: "/app/simulator", icon: MessageSquare, label: "Probar" },
+    { to: "/app/chats", icon: Inbox, label: "Chats" },
+  ];
+
+  const moreItems = [
+    {
+      to: "/app/integrations",
+      icon: Plug,
+      label: "Integraciones",
+      desc: "WhatsApp e Instagram, próximamente.",
+    },
+    {
+      to: "/app/settings",
+      icon: Settings,
+      label: "Configuración",
+      desc: "Tu negocio, cuenta y preferencias.",
+    },
+    {
+      to: "/app/billing",
+      icon: CreditCard,
+      label: "Facturación",
+      desc: "Planes y consumo. Próximamente.",
+      soon: true,
+    },
+  ];
+
+  const moreActive = moreItems.some((i) => path === i.to);
+
+  return (
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-40 flex items-stretch justify-around border-t border-border bg-background/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
+      aria-label="Navegación inferior"
+    >
+      {mainItems.map((item) => {
+        const active = path === item.to;
+        return (
+          <Link
+            key={item.to}
+            to={item.to}
+            className={`flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition ${
+              active ? "text-primary" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <span
+              className={`flex h-9 w-14 items-center justify-center rounded-full transition-all duration-300 ${
+                active ? "bg-accent text-accent-foreground shadow-sm" : ""
+              }`}
+            >
+              <item.icon className="h-4 w-4" />
+            </span>
+            {item.label}
+          </Link>
+        );
+      })}
+
+      <Drawer>
+        <DrawerTrigger asChild>
+          <button
+            type="button"
+            aria-label="Más opciones"
+            className={`flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition ${
+              moreActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <span
+              className={`flex h-9 w-14 items-center justify-center rounded-full transition-all duration-300 ${
+                moreActive ? "bg-accent text-accent-foreground shadow-sm" : ""
+              }`}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </span>
+            Más
+          </button>
+        </DrawerTrigger>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle className="font-display">Más</DrawerTitle>
+            <DrawerDescription>Configuración, integraciones y facturación.</DrawerDescription>
+          </DrawerHeader>
+          <div className="grid gap-2 p-4 pt-0">
+            {moreItems.map((item) => (
+              <DrawerClose asChild key={item.to}>
+                <Link
+                  to={item.to}
+                  className="flex items-center gap-4 rounded-2xl border border-border bg-card p-4 transition hover:border-primary/40 hover:bg-accent"
+                >
+                  <div className="icon-tile shrink-0">
+                    <item.icon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-display text-sm font-semibold">{item.label}</p>
+                      {item.soon && (
+                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Próximamente
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{item.desc}</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </Link>
+              </DrawerClose>
+            ))}
+          </div>
+        </DrawerContent>
+      </Drawer>
+    </nav>
   );
 }

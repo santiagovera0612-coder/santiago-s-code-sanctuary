@@ -1,90 +1,128 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  Building2, Bot, MessageSquare, Shield, User,
-  ChevronRight, ArrowLeft, Check, Loader2, LogOut, Instagram, Plug, CreditCard,
+  Building2,
+  User,
+  ChevronRight,
+  ArrowLeft,
+  Check,
+  Loader2,
+  LogOut,
+  CreditCard,
+  Upload,
+  Link as LinkIcon,
+  FileText,
+  StickyNote,
+  Trash2,
+  ImageIcon,
+  Plus,
+  ExternalLink,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  getStoredAgent,
+  saveStoredAgent,
+  uploadBusinessContextFile,
+  uploadBusinessLogo,
+  type ContextItem,
+  type StoredAgent,
+} from "@/lib/clerivo-agent";
 
 export const Route = createFileRoute("/app/settings")({
   head: () => ({ meta: [{ title: "Configuración — Clerivo" }] }),
   component: SettingsPage,
 });
 
-type SectionId = "business" | "agent" | "channels" | "rules" | "account";
+type SectionId = "business" | "account";
+type UserMetadata = {
+  full_name?: string;
+  name?: string;
+};
 
+// Settings is intentionally focused on the three areas a business owner
+// touches most often. Agent setup lives in the dedicated "Agente IA"
+// page; integrations live in the dedicated "Integraciones" page; rules
+// are part of the Agente IA configuration.
 const SECTIONS: {
   id: SectionId;
   title: string;
   desc: string;
-  icon: any;
+  icon: typeof Building2;
   accent: string;
 }[] = [
-  { id: "business", title: "Tu negocio", desc: "Datos básicos de tu empresa.", icon: Building2, accent: "from-violet-500/15 to-indigo-500/15 text-violet-500" },
-  { id: "agent", title: "Agente IA", desc: "Configurá cómo responde tu asistente.", icon: Bot, accent: "from-indigo-500/15 to-blue-500/15 text-indigo-500" },
-  { id: "channels", title: "Integraciones", desc: "Gestioná WhatsApp, Instagram y otros canales.", icon: Plug, accent: "from-emerald-500/15 to-teal-500/15 text-emerald-500" },
-  { id: "rules", title: "Reglas de respuesta", desc: "Definí qué puede hacer y qué no puede inventar la IA.", icon: Shield, accent: "from-amber-500/15 to-orange-500/15 text-amber-500" },
-  { id: "account", title: "Cuenta", desc: "Datos de acceso y sesión.", icon: User, accent: "from-rose-500/15 to-pink-500/15 text-rose-500" },
+  {
+    id: "business",
+    title: "Tu negocio",
+    desc: "Logo, enlaces y contexto adicional para tu agente.",
+    icon: Building2,
+    accent: "from-violet-500/15 to-indigo-500/15 text-violet-500",
+  },
+  {
+    id: "account",
+    title: "Cuenta",
+    desc: "Datos de acceso y sesión.",
+    icon: User,
+    accent: "from-rose-500/15 to-pink-500/15 text-rose-500",
+  },
 ];
-
-const DEFAULTS = {
-  business: { name: "", industry: "servicios", country: "ar", currency: "ars", hours: "", description: "" },
-  agent: { name: "Sofía", goal: "responder", tone: "cercano", mode: "sugerir" },
-  channels: { whatsapp_enabled: false, instagram_enabled: false },
-  rules: { can_do: "", cannot_invent: "", handoff_when: "", must_ask: "" },
-};
-
-type Settings = typeof DEFAULTS;
 
 function SettingsPage() {
   const navigate = useNavigate();
   const [active, setActive] = useState<SectionId | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState("");
-  const [settings, setSettings] = useState<Settings>(DEFAULTS);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoading(false); return; }
-      setUserId(user.id);
-      setUserEmail(user.email ?? "");
-      const { data } = await supabase.from("user_settings").select("*").eq("user_id", user.id).maybeSingle();
-      if (data) {
-        setSettings({
-          business: { ...DEFAULTS.business, ...((data as any).business ?? {}) },
-          agent: { ...DEFAULTS.agent, ...((data as any).agent ?? {}) },
-          channels: { ...DEFAULTS.channels, ...((data as any).channels ?? {}) },
-          rules: { ...DEFAULTS.rules, ...((data as any).rules ?? {}) },
-        });
-      }
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      setUserEmail(user?.email ?? "");
       setLoading(false);
     })();
   }, []);
 
-  const update = <K extends keyof Settings>(key: K, partial: Partial<Settings[K]>) =>
-    setSettings(prev => ({ ...prev, [key]: { ...prev[key], ...partial } }));
-
-  const save = async <K extends keyof Settings>(key: K) => {
-    if (!userId) { toast.error("Debes iniciar sesión"); return; }
-    const payload: any = { user_id: userId, [key]: settings[key] };
-    const { error } = await supabase.from("user_settings").upsert(payload, { onConflict: "user_id" });
-    if (error) toast.error("No se pudo guardar: " + error.message);
-    else toast.success("Cambios guardados ✓");
-  };
-
   if (loading) {
     return (
-      <div className="flex h-[60vh] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      <div className="mx-auto max-w-3xl p-4 sm:p-6 lg:p-8">
+        <div className="mb-8 space-y-2">
+          <Skeleton className="h-8 w-44" />
+          <Skeleton className="h-4 w-64" />
+        </div>
+        <div className="grid gap-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-4 rounded-2xl border border-border bg-card p-5"
+            >
+              <Skeleton className="h-12 w-12 shrink-0 rounded-xl" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-56" />
+              </div>
+              <Skeleton className="h-5 w-5 shrink-0 rounded-full" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
 
   if (active) {
-    const meta = SECTIONS.find(s => s.id === active)!;
+    const meta = SECTIONS.find((s) => s.id === active)!;
     return (
       <div className="mx-auto max-w-3xl p-4 sm:p-6 lg:p-8">
         <button
@@ -95,7 +133,9 @@ function SettingsPage() {
         </button>
 
         <div className="mb-6 animate-fade-up">
-          <div className={`mb-3 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br ${meta.accent}`}>
+          <div
+            className={`mb-3 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br ${meta.accent}`}
+          >
             <meta.icon className="h-5 w-5" />
           </div>
           <h1 className="font-display text-2xl font-bold tracking-tight">{meta.title}</h1>
@@ -103,10 +143,7 @@ function SettingsPage() {
         </div>
 
         <div className="animate-fade-up">
-          {active === "business" && <BusinessForm v={settings.business} on={(p: any) => update("business", p)} onSave={() => save("business")} />}
-          {active === "agent" && <AgentForm v={settings.agent} on={(p: any) => update("agent", p)} onSave={() => save("agent")} />}
-          {active === "channels" && <ChannelsForm v={settings.channels} on={(p: any) => update("channels", p)} onSave={() => save("channels")} />}
-          {active === "rules" && <RulesForm v={settings.rules} on={(p: any) => update("rules", p)} onSave={() => save("rules")} />}
+          {active === "business" && <BusinessForm />}
           {active === "account" && <AccountForm email={userEmail} />}
         </div>
       </div>
@@ -123,13 +160,15 @@ function SettingsPage() {
       </div>
 
       <div className="grid gap-3 animate-fade-up">
-        {SECTIONS.map(s => (
+        {SECTIONS.map((s) => (
           <button
             key={s.id}
             onClick={() => setActive(s.id)}
             className="group flex items-center gap-4 rounded-2xl border border-border bg-card p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
           >
-            <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${s.accent}`}>
+            <div
+              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${s.accent}`}
+            >
               <s.icon className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
@@ -149,9 +188,13 @@ function SettingsPage() {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <p className="font-display text-base font-semibold">Facturación</p>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Próximamente</span>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Próximamente
+              </span>
             </div>
-            <p className="mt-0.5 text-sm text-muted-foreground">Plan y consumo. Disponible más adelante.</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Plan y consumo. Disponible más adelante.
+            </p>
           </div>
           <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-primary" />
         </button>
@@ -175,180 +218,707 @@ function Card({ children, footer }: { children: React.ReactNode; footer?: React.
   );
 }
 
-function Field({ label, hint, children }: any) {
+function Field({
+  label,
+  hint,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  htmlFor?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="grid gap-1.5">
-      <label className="text-xs font-semibold text-foreground">{label}</label>
+      <Label htmlFor={htmlFor} className="text-xs font-semibold">
+        {label}
+      </Label>
       {children}
       {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   );
 }
 
-function TInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <input
-      {...props}
-      className={`h-10 rounded-lg border border-border bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 ${props.className ?? ""}`}
-    />
-  );
-}
+/* ---------- Sections ---------- */
 
-function TArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return (
-    <textarea
-      {...props}
-      className={`min-h-[90px] rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 ${props.className ?? ""}`}
-    />
-  );
-}
+const INDUSTRIES = [
+  { value: "ecommerce", label: "E-commerce" },
+  { value: "muebles", label: "Muebles y decoración" },
+  { value: "inmobiliaria", label: "Inmobiliaria" },
+  { value: "estetica", label: "Estética / belleza" },
+  { value: "restaurante", label: "Restaurante" },
+  { value: "salud", label: "Salud" },
+  { value: "servicios", label: "Servicios profesionales" },
+  { value: "ropa", label: "Tienda de ropa" },
+  { value: "comida", label: "Comida" },
+  { value: "tecnologia", label: "Tecnología" },
+  { value: "otro", label: "Otro" },
+];
 
-function TSelect({ children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <select
-      {...props}
-      className={`h-10 rounded-lg border border-border bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 ${props.className ?? ""}`}
-    >{children}</select>
-  );
-}
+const COUNTRIES = [
+  { value: "ar", label: "Argentina" },
+  { value: "mx", label: "México" },
+  { value: "es", label: "España" },
+  { value: "cl", label: "Chile" },
+  { value: "co", label: "Colombia" },
+  { value: "uy", label: "Uruguay" },
+  { value: "pe", label: "Perú" },
+  { value: "ot", label: "Otro" },
+];
 
-function SaveButton({ onSave }: { onSave: () => Promise<void> | void }) {
-  const [saving, setSaving] = useState(false);
-  return (
-    <button
-      onClick={async () => { setSaving(true); await onSave(); setSaving(false); }}
-      disabled={saving}
-      className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-glow transition hover:opacity-95 disabled:opacity-50"
-    >
-      {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-      {saving ? "Guardando…" : "Guardar cambios"}
-    </button>
-  );
-}
+const CURRENCIES = [
+  { value: "ARS", label: "ARS — Peso argentino" },
+  { value: "USD", label: "USD — Dólar" },
+  { value: "EUR", label: "EUR — Euro" },
+  { value: "MXN", label: "MXN — Peso mexicano" },
+  { value: "CLP", label: "CLP — Peso chileno" },
+  { value: "COP", label: "COP — Peso colombiano" },
+];
 
-/* ---------- Forms ---------- */
+function BusinessForm() {
+  const [agent, setAgent] = useState<StoredAgent | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
-function BusinessForm({ v, on, onSave }: any) {
-  return (
-    <Card footer={<SaveButton onSave={onSave} />}>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Nombre del negocio"><TInput value={v.name} onChange={e => on({ name: e.target.value })} placeholder="Mi empresa" /></Field>
-        <Field label="Rubro">
-          <TSelect value={v.industry} onChange={e => on({ industry: e.target.value })}>
-            <option value="ecommerce">E-commerce</option>
-            <option value="muebles">Muebles y decoración</option>
-            <option value="inmobiliaria">Inmobiliaria</option>
-            <option value="estetica">Estética / belleza</option>
-            <option value="restaurante">Restaurante</option>
-            <option value="salud">Salud</option>
-            <option value="servicios">Servicios profesionales</option>
-          </TSelect>
-        </Field>
-        <Field label="País">
-          <TSelect value={v.country} onChange={e => on({ country: e.target.value })}>
-            <option value="ar">Argentina</option>
-            <option value="mx">México</option>
-            <option value="es">España</option>
-            <option value="cl">Chile</option>
-            <option value="co">Colombia</option>
-          </TSelect>
-        </Field>
-        <Field label="Moneda">
-          <TSelect value={v.currency} onChange={e => on({ currency: e.target.value })}>
-            <option value="ars">ARS — Peso argentino</option>
-            <option value="usd">USD — Dólar</option>
-            <option value="eur">EUR — Euro</option>
-            <option value="mxn">MXN — Peso mexicano</option>
-            <option value="clp">CLP — Peso chileno</option>
-          </TSelect>
-        </Field>
-        <Field label="Horario de atención">
-          <TInput value={v.hours} onChange={e => on({ hours: e.target.value })} placeholder="Lun a Sáb · 9:00 a 19:00 hs" />
-        </Field>
-      </div>
-      <Field label="Descripción corta del negocio" hint="El agente la usará como contexto base.">
-        <TArea value={v.description} onChange={e => on({ description: e.target.value })} placeholder="¿A qué se dedica tu negocio?" />
-      </Field>
-    </Card>
-  );
-}
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const loaded = await getStoredAgent();
+        if (alive) setAgent(loaded);
+      } catch {
+        toast.error("No pudimos cargar los datos del negocio.");
+        if (alive) setAgent(null);
+      } finally {
+        if (alive) setHydrated(true);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-function AgentForm(_: any) {
-  return (
-    <Card>
-      <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed border-border bg-muted/30 p-5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent text-primary">
-          <Bot className="h-5 w-5" />
+  // If there's no agent yet, gently nudge to create one first.
+  if (hydrated && !agent) {
+    return (
+      <Card>
+        <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed border-border bg-muted/30 p-5">
+          <div className="icon-tile">
+            <Building2 className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="font-display text-base font-semibold">Todavía no creaste tu Agente IA.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Empezá creando tu agente. Te vamos a pedir el nombre del negocio durante la
+              configuración. Después podés volver acá para sumar logo, enlaces y contexto.
+            </p>
+          </div>
+          <Button asChild size="sm" className="rounded-lg">
+            <Link to="/app/create">
+              Crear Agente IA <ChevronRight className="h-4 w-4" />
+            </Link>
+          </Button>
         </div>
-        <div>
-          <p className="font-display text-base font-semibold">La configuración principal del agente se gestiona desde Agente IA.</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Editá su perfil, tono, objetivo y modo de trabajo desde ahí para mantener todo en un solo lugar.
+      </Card>
+    );
+  }
+
+  if (!agent) return null;
+
+  return <BusinessFormInner initial={agent} />;
+}
+
+function BusinessFormInner({ initial }: { initial: StoredAgent }) {
+  const [draft, setDraft] = useState<StoredAgent>(initial);
+  const [saved, setSaved] = useState<StoredAgent>(initial);
+  const [saving, setSaving] = useState(false);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+
+  const update = <K extends keyof StoredAgent>(k: K, v: StoredAgent[K]) =>
+    setDraft((d) => ({ ...d, [k]: v }));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const next = await saveStoredAgent(draft);
+      setDraft(next);
+      setSaved(next);
+      toast.success("Datos del negocio guardados");
+    } catch {
+      toast.error("No pudimos guardar los datos del negocio.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* ----- A · Identidad ----- */}
+      <SectionCard
+        title="Identidad del negocio"
+        description="Lo más importante: cómo se llama tu negocio y cómo te ve la gente."
+      >
+        <div className="grid gap-5 sm:grid-cols-[auto_1fr]">
+          <LogoUpload
+            value={draft.logo}
+            onChange={(logo, logoStoragePath) => setDraft((d) => ({ ...d, logo, logoStoragePath }))}
+          />
+          <div className="grid gap-4">
+            <Field label="Nombre del negocio" htmlFor="biz-name">
+              <Input
+                id="biz-name"
+                value={draft.businessName}
+                onChange={(e) => update("businessName", e.target.value)}
+                placeholder="Mi empresa"
+                className="h-10 rounded-lg"
+              />
+            </Field>
+            <Field label="Rubro" htmlFor="biz-industry">
+              <Select
+                value={draft.businessType || ""}
+                onValueChange={(v) => update("businessType", v)}
+              >
+                <SelectTrigger id="biz-industry" className="h-10 rounded-lg">
+                  <SelectValue placeholder="Elegí un rubro" />
+                </SelectTrigger>
+                <SelectContent>
+                  {INDUSTRIES.map((i) => (
+                    <SelectItem key={i.value} value={i.label}>
+                      {i.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+        </div>
+        <Field
+          label="Descripción del negocio"
+          htmlFor="biz-desc"
+          hint="Tu agente la usa como contexto base."
+        >
+          <Textarea
+            id="biz-desc"
+            value={draft.description ?? ""}
+            onChange={(e) => update("description", e.target.value)}
+            placeholder="¿A qué se dedica tu negocio? ¿Qué te diferencia?"
+            rows={3}
+            className="rounded-lg"
+          />
+        </Field>
+      </SectionCard>
+
+      {/* ----- B · Canales y enlaces ----- */}
+      <SectionCard
+        title="Canales y enlaces"
+        description="Tus puntos de contacto. El agente va a usar esta información cuando un cliente la pida."
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Página web" htmlFor="biz-web">
+            <Input
+              id="biz-web"
+              type="url"
+              inputMode="url"
+              value={draft.websiteUrl ?? ""}
+              onChange={(e) => update("websiteUrl", e.target.value)}
+              placeholder="https://tunegocio.com"
+              className="h-10 rounded-lg"
+            />
+          </Field>
+          <Field label="Instagram" htmlFor="biz-ig">
+            <Input
+              id="biz-ig"
+              value={draft.instagramUrl ?? ""}
+              onChange={(e) => update("instagramUrl", e.target.value)}
+              placeholder="@tu_negocio o instagram.com/…"
+              className="h-10 rounded-lg"
+            />
+          </Field>
+          <Field label="WhatsApp" htmlFor="biz-wa" hint="Opcional.">
+            <Input
+              id="biz-wa"
+              type="tel"
+              inputMode="tel"
+              value={draft.whatsappNumber ?? ""}
+              onChange={(e) => update("whatsappNumber", e.target.value)}
+              placeholder="+54 9 11 1234-5678"
+              className="h-10 rounded-lg"
+            />
+          </Field>
+          <Field label="Horario de atención" htmlFor="biz-hours">
+            <Input
+              id="biz-hours"
+              value={draft.hours ?? ""}
+              onChange={(e) => update("hours", e.target.value)}
+              placeholder="Lun a Sáb · 9:00 a 19:00"
+              className="h-10 rounded-lg"
+            />
+          </Field>
+          <Field label="País" htmlFor="biz-country">
+            <Select value={draft.country || ""} onValueChange={(v) => update("country", v)}>
+              <SelectTrigger id="biz-country" className="h-10 rounded-lg">
+                <SelectValue placeholder="País" />
+              </SelectTrigger>
+              <SelectContent>
+                {COUNTRIES.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>
+                    {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Moneda" htmlFor="biz-currency">
+            <Select value={draft.currency || ""} onValueChange={(v) => update("currency", v)}>
+              <SelectTrigger id="biz-currency" className="h-10 rounded-lg">
+                <SelectValue placeholder="Moneda" />
+              </SelectTrigger>
+              <SelectContent>
+                {CURRENCIES.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>
+                    {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        </div>
+      </SectionCard>
+
+      {/* ----- C · Contexto adicional ----- */}
+      <SectionCard
+        title="Contexto adicional para tu agente"
+        description="Sumá enlaces, PDFs o notas para que CLERIVO entienda mejor cómo responder."
+      >
+        <ContextItemsEditor
+          items={draft.contextItems ?? []}
+          onChange={(items) => update("contextItems", items)}
+        />
+      </SectionCard>
+
+      {/* ----- Save bar ----- */}
+      <div className="sticky bottom-4 z-10 flex justify-end">
+        <div className="flex items-center gap-3 rounded-2xl border border-border bg-card/90 px-3 py-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/70">
+          {dirty && <span className="text-xs text-muted-foreground">Cambios sin guardar</span>}
+          <Button onClick={handleSave} disabled={!dirty || saving} className="h-9 rounded-lg">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Guardar cambios
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Container card for a logical group of fields inside the business form. */
+function SectionCard({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      <div className="border-b border-border bg-muted/30 px-5 py-4 sm:px-6">
+        <p className="font-display text-base font-semibold">{title}</p>
+        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground sm:text-sm">
+          {description}
+        </p>
+      </div>
+      <div className="space-y-5 px-5 py-5 sm:px-6">{children}</div>
+    </div>
+  );
+}
+
+/** Square logo uploader. Accepts PNG/JPEG and stores the file in Supabase Storage. */
+function LogoUpload({
+  value,
+  onChange,
+}: {
+  value?: string;
+  onChange: (logo: string | undefined, logoStoragePath?: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleFile = async (file: File) => {
+    if (!file) return;
+    if (!/^image\/(png|jpe?g)$/.test(file.type)) {
+      toast.error("Subí un archivo PNG o JPG.");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      toast.error("El archivo es muy grande. Máximo 4 MB.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const uploaded = await uploadBusinessLogo(file);
+      onChange(uploaded.logo, uploaded.logoStoragePath);
+    } catch {
+      toast.error("No pudimos subir el logo. Probá de nuevo.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const f = e.dataTransfer.files?.[0];
+          if (f) handleFile(f);
+        }}
+        onClick={() => inputRef.current?.click()}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+        aria-label="Subir logo"
+        className={`group relative flex h-32 w-32 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed bg-muted/30 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 ${
+          dragOver
+            ? "border-primary bg-primary/5"
+            : "border-border hover:border-primary/40 hover:bg-accent/40"
+        }`}
+      >
+        {loading ? (
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        ) : value ? (
+          <>
+            <img src={value} alt="Logo" className="h-full w-full object-cover" />
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-foreground/60 text-xs font-medium text-background opacity-0 transition group-hover:opacity-100">
+              <Upload className="mr-1 h-3.5 w-3.5" /> Cambiar
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center gap-1 px-2 text-center text-muted-foreground">
+            <ImageIcon className="h-5 w-5" />
+            <span className="text-[11px] leading-tight">Subí tu logo</span>
+            <span className="text-[10px] leading-tight">PNG · JPG</span>
+          </div>
+        )}
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/png,image/jpeg"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleFile(f);
+            e.target.value = ""; // allow re-selecting same file
+          }}
+        />
+      </div>
+      {value && (
+        <Button
+          type="button"
+          variant="link"
+          size="sm"
+          onClick={() => onChange(undefined, undefined)}
+          className="h-auto p-0 text-[11px] text-muted-foreground hover:text-destructive"
+        >
+          Quitar logo
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** List + add buttons for context items (links / PDFs stored in Supabase / notes). */
+function ContextItemsEditor({
+  items,
+  onChange,
+}: {
+  items: ContextItem[];
+  onChange: (items: ContextItem[]) => void;
+}) {
+  const [adding, setAdding] = useState<"link" | "note" | null>(null);
+  const [linkLabel, setLinkLabel] = useState("");
+  const [linkValue, setLinkValue] = useState("");
+  const [noteText, setNoteText] = useState("");
+  const [pdfUploading, setPdfUploading] = useState(false);
+  const pdfInput = useRef<HTMLInputElement>(null);
+
+  const add = (item: Omit<ContextItem, "id" | "addedAt">) => {
+    const newItem: ContextItem = {
+      ...item,
+      id: crypto.randomUUID(),
+      addedAt: new Date().toISOString(),
+    };
+    onChange([...items, newItem]);
+  };
+
+  const remove = (id: string) => onChange(items.filter((i) => i.id !== id));
+
+  const submitLink = () => {
+    const value = linkValue.trim();
+    if (!value) return;
+    add({
+      type: "link",
+      label: linkLabel.trim() || prettyHost(value) || "Enlace",
+      value,
+    });
+    setLinkLabel("");
+    setLinkValue("");
+    setAdding(null);
+  };
+
+  const submitNote = () => {
+    const value = noteText.trim();
+    if (!value) return;
+    add({
+      type: "note",
+      label: value.slice(0, 40),
+      value,
+    });
+    setNoteText("");
+    setAdding(null);
+  };
+
+  const handlePdf = async (file: File) => {
+    if (file.type !== "application/pdf") {
+      toast.error("Subí un archivo PDF.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("El PDF es muy grande (máximo 10 MB).");
+      return;
+    }
+    setPdfUploading(true);
+    try {
+      const uploaded = await uploadBusinessContextFile(file);
+      add({
+        type: "pdf",
+        label: file.name,
+        value: file.name,
+        size: file.size,
+        storagePath: uploaded.storagePath,
+      });
+      toast.success(`${file.name} agregado al contexto`);
+    } catch {
+      toast.error("No pudimos subir el PDF. Probá de nuevo.");
+    } finally {
+      setPdfUploading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Items list */}
+      {items.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 p-6 text-center">
+          <div className="icon-tile">
+            <FileText className="h-5 w-5" />
+          </div>
+          <p className="text-sm font-semibold">Todavía no agregaste contexto</p>
+          <p className="max-w-xs text-xs text-muted-foreground">
+            Sumá enlaces, PDFs o notas para que CLERIVO entienda mejor a tu negocio.
           </p>
         </div>
-        <a href="/app/create" className="inline-flex h-10 items-center gap-2 rounded-lg bg-gradient-primary px-4 text-sm font-semibold text-primary-foreground shadow-glow">
-          Ir a Agente IA <ChevronRight className="h-4 w-4" />
-        </a>
-      </div>
-    </Card>
-  );
-}
-
-function ChannelsForm({ v, on, onSave }: any) {
-  const channels = [
-    { key: "whatsapp_enabled" as const, name: "WhatsApp", desc: "Respondé mensajes de tus clientes desde WhatsApp Business.", icon: MessageSquare, color: "text-emerald-500 bg-emerald-500/10" },
-    { key: "instagram_enabled" as const, name: "Instagram", desc: "Conectá los mensajes directos de Instagram.", icon: Instagram, color: "text-pink-500 bg-pink-500/10" },
-  ];
-  return (
-    <Card footer={<SaveButton onSave={onSave} />}>
-      <div className="grid gap-3">
-        {channels.map(c => (
-            <div key={c.key} className="flex items-center gap-4 rounded-xl border border-border bg-background p-4">
-              <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${c.color}`}>
-                <c.icon className="h-5 w-5" />
+      ) : (
+        <ul className="grid gap-2">
+          {items.map((item) => (
+            <li
+              key={item.id}
+              className="flex items-center gap-3 rounded-xl border border-border bg-background p-3 transition hover:border-primary/30"
+            >
+              <div className="icon-tile-sm">
+                {item.type === "link" ? (
+                  <LinkIcon className="h-4 w-4" />
+                ) : item.type === "pdf" ? (
+                  <FileText className="h-4 w-4" />
+                ) : (
+                  <StickyNote className="h-4 w-4" />
+                )}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="font-semibold">{c.name}</p>
-                  <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                    Próximamente
-                  </span>
-                </div>
-                <p className="mt-0.5 text-xs text-muted-foreground">{c.desc}</p>
+                <p className="truncate text-sm font-semibold">{item.label}</p>
+                <p className="truncate text-[11px] text-muted-foreground">
+                  {item.type === "pdf"
+                    ? `PDF · ${formatBytes(item.size ?? 0)}`
+                    : item.type === "link"
+                      ? item.value
+                      : "Nota"}
+                </p>
               </div>
+              {item.type === "link" && (
+                <a
+                  href={item.value}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-muted-foreground transition hover:text-primary"
+                  aria-label="Abrir enlace"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              )}
               <button
-                disabled
-                className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-border bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground opacity-70"
+                type="button"
+                onClick={() => remove(item.id)}
+                aria-label="Eliminar"
+                className="text-muted-foreground transition hover:text-destructive"
               >
-                <Plug className="h-3.5 w-3.5" /> Disponible próximamente
+                <Trash2 className="h-4 w-4" />
               </button>
-            </div>
+            </li>
           ))}
-      </div>
-    </Card>
+        </ul>
+      )}
+
+      {/* Inline forms for add link / note */}
+      {adding === "link" && (
+        <div className="space-y-3 rounded-xl border border-border bg-background p-4">
+          <Field label="Título (opcional)">
+            <Input
+              value={linkLabel}
+              onChange={(e) => setLinkLabel(e.target.value)}
+              placeholder="Ej: Política de envíos"
+              className="h-10 rounded-lg"
+            />
+          </Field>
+          <Field label="URL">
+            <Input
+              type="url"
+              inputMode="url"
+              value={linkValue}
+              onChange={(e) => setLinkValue(e.target.value)}
+              placeholder="https://…"
+              className="h-10 rounded-lg"
+            />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setAdding(null);
+                setLinkLabel("");
+                setLinkValue("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button size="sm" onClick={submitLink} disabled={!linkValue.trim()}>
+              Agregar enlace
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {adding === "note" && (
+        <div className="space-y-3 rounded-xl border border-border bg-background p-4">
+          <Field label="Nota" hint="Texto libre que tu agente puede usar como contexto.">
+            <Textarea
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              placeholder="Ej: Los envíos al interior tardan entre 3 y 5 días hábiles."
+              rows={4}
+              className="rounded-lg"
+            />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setAdding(null);
+                setNoteText("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button size="sm" onClick={submitNote} disabled={!noteText.trim()}>
+              Agregar nota
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      {adding === null && (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAdding("link")}
+            className="rounded-lg"
+          >
+            <Plus className="h-3.5 w-3.5" /> <LinkIcon className="h-3.5 w-3.5" /> Agregar enlace
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => pdfInput.current?.click()}
+            disabled={pdfUploading}
+            className="rounded-lg"
+          >
+            {pdfUploading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Plus className="h-3.5 w-3.5" />
+            )}
+            <FileText className="h-3.5 w-3.5" /> Subir PDF
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAdding("note")}
+            className="rounded-lg"
+          >
+            <Plus className="h-3.5 w-3.5" /> <StickyNote className="h-3.5 w-3.5" /> Agregar nota
+          </Button>
+          <input
+            ref={pdfInput}
+            type="file"
+            accept="application/pdf"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void handlePdf(f);
+              e.target.value = "";
+            }}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
-function RulesForm(_: any) {
-  return (
-    <Card>
-      <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed border-border bg-muted/30 p-5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent text-primary">
-          <Shield className="h-5 w-5" />
-        </div>
-        <div>
-          <p className="font-display text-base font-semibold">Las reglas de respuesta se editan desde Agente IA &gt; Reglas de respuesta.</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Definí qué puede responder, qué no debe inventar y cuándo derivar a una persona.
-          </p>
-        </div>
-        <a href="/app/create" className="inline-flex h-10 items-center gap-2 rounded-lg bg-gradient-primary px-4 text-sm font-semibold text-primary-foreground shadow-glow">
-          Editar reglas del agente <ChevronRight className="h-4 w-4" />
-        </a>
-      </div>
-    </Card>
-  );
+function prettyHost(url: string): string {
+  try {
+    const u = new URL(url.startsWith("http") ? url : `https://${url}`);
+    return u.hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
 }
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+// AgentForm, ChannelsForm and RulesForm were removed from Settings:
+// the agent configuration now lives entirely in /app/create, the
+// integrations in /app/integrations and the rules inside the agent
+// editor. The three sections still appear in the main sidebar so
+// nothing is lost — only the duplicated entry points inside Settings.
 
 function AccountForm({ email }: { email: string }) {
   const navigate = useNavigate();
@@ -358,8 +928,10 @@ function AccountForm({ email }: { email: string }) {
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      const meta = (user?.user_metadata ?? {}) as any;
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const meta = (user?.user_metadata ?? {}) as UserMetadata;
       setName(meta.full_name ?? meta.name ?? "");
     })();
   }, []);
@@ -371,12 +943,18 @@ function AccountForm({ email }: { email: string }) {
   };
 
   const changePassword = async () => {
-    if (pw.length < 6) { toast.error("La contraseña debe tener al menos 6 caracteres"); return; }
+    if (pw.length < 6) {
+      toast.error("La contraseña debe tener al menos 6 caracteres");
+      return;
+    }
     setChanging(true);
     const { error } = await supabase.auth.updateUser({ password: pw });
     setChanging(false);
     if (error) toast.error(error.message);
-    else { toast.success("Contraseña actualizada ✓"); setPw(""); }
+    else {
+      toast.success("Contraseña actualizada ✓");
+      setPw("");
+    }
   };
 
   const logout = async () => {
@@ -386,39 +964,65 @@ function AccountForm({ email }: { email: string }) {
 
   return (
     <div className="space-y-4">
-      <Card footer={<button onClick={saveName} className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-glow transition hover:opacity-95"><Check className="h-3.5 w-3.5" /> Guardar</button>}>
+      <Card
+        footer={
+          <Button onClick={saveName} size="sm" className="rounded-lg">
+            <Check className="h-3.5 w-3.5" /> Guardar
+          </Button>
+        }
+      >
         <Field label="Nombre del usuario">
-          <TInput value={name} onChange={e => setName(e.target.value)} placeholder="Tu nombre" />
+          <Input
+            className="h-10 rounded-lg"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Tu nombre"
+          />
         </Field>
         <Field label="Email" hint="El email asociado a tu cuenta.">
-          <TInput
+          <Input
+            className="h-10 rounded-lg"
             value={!email || /demo|clerivo\.app$/i.test(email) ? "Usuario" : email}
             disabled
           />
         </Field>
       </Card>
 
-      <Card footer={
-        <button
-          onClick={changePassword}
-          disabled={changing || !pw}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-glow transition hover:opacity-95 disabled:opacity-50"
-        >
-          {changing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-          Cambiar contraseña
-        </button>
-      }>
+      <Card
+        footer={
+          <Button
+            onClick={changePassword}
+            disabled={changing || !pw}
+            size="sm"
+            className="rounded-lg"
+          >
+            {changing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Check className="h-3.5 w-3.5" />
+            )}
+            Cambiar contraseña
+          </Button>
+        }
+      >
         <Field label="Nueva contraseña" hint="Mínimo 6 caracteres.">
-          <TInput type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="••••••••" />
+          <Input
+            className="h-10 rounded-lg"
+            type="password"
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            placeholder="••••••••"
+          />
         </Field>
       </Card>
 
-      <button
+      <Button
         onClick={logout}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm font-semibold text-destructive transition hover:bg-destructive/10"
+        variant="outline"
+        className="w-full justify-center rounded-2xl border-destructive/30 bg-destructive/5 px-4 py-3 text-sm font-semibold text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
       >
         <LogOut className="h-4 w-4" /> Cerrar sesión
-      </button>
+      </Button>
     </div>
   );
 }

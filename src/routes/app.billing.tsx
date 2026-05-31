@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Clock, CreditCard, Sparkles } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 export const Route = createFileRoute("/app/billing")({
   head: () => ({ meta: [{ title: "Facturación — Clerivo AI" }] }),
@@ -48,14 +49,22 @@ function Billing() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Info icon={Sparkles} title="Sin cobros activos" desc="Por ahora podés usar Clerivo sin tarjeta ni suscripción." />
-        <Info icon={CreditCard} title="Pagos y facturas" desc="La emisión de facturas y los medios de pago se van a habilitar más adelante." />
+        <Info
+          icon={Sparkles}
+          title="Sin cobros activos"
+          desc="Por ahora podés usar Clerivo sin tarjeta ni suscripción."
+        />
+        <Info
+          icon={CreditCard}
+          title="Pagos y facturas"
+          desc="La emisión de facturas y los medios de pago se van a habilitar más adelante."
+        />
       </div>
     </div>
   );
 }
 
-function Info({ icon: Icon, title, desc }: { icon: any; title: string; desc: string }) {
+function Info({ icon: Icon, title, desc }: { icon: LucideIcon; title: string; desc: string }) {
   return (
     <div className="surface-card p-4">
       <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-primary">

@@ -1,152 +1,60 @@
-// Local auth stub — replaces Supabase while there is no backend.
-// Persists a fake user/session in localStorage so login/register/settings
-// continue to work end-to-end in the UI without a database.
+// Real Supabase client. Reemplaza el stub localStorage que vivía acá
+// antes de la Fase 2 (backend real). La API expuesta (`supabase.auth.*`,
+// `supabase.from(...)`, `supabase.storage.*`, `supabase.channel(...)`) es
+// la nativa de @supabase/supabase-js — los 5 archivos que importan
+// `supabase` siguen funcionando sin cambios porque el stub respetaba la
+// misma forma.
+//
+// Variables esperadas en .env / .dev.vars:
+//   VITE_SUPABASE_URL
+//   VITE_SUPABASE_ANON_KEY
+// Ver .env.example para los detalles.
 
-type User = { id: string; email: string; user_metadata: Record<string, unknown> };
-type Session = { access_token: string; user: User };
-type AuthError = { message: string };
-type Listener = (event: string, session: Session | null) => void;
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const STORAGE_USERS = "stub.users";
-const STORAGE_SESSION = "stub.session";
+const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-const isBrowser = typeof window !== "undefined" && typeof localStorage !== "undefined";
-
-const read = <T,>(key: string, fallback: T): T => {
-  if (!isBrowser) return fallback;
-  try {
-    const v = localStorage.getItem(key);
-    return v ? (JSON.parse(v) as T) : fallback;
-  } catch {
-    return fallback;
+function getSupabaseConfigError(): string | null {
+  if (!url || !anonKey) {
+    return "Supabase no está configurado. Definí VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en .env.local o .dev.vars.";
   }
-};
-const write = (key: string, value: unknown) => {
-  if (!isBrowser) return;
+
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    new URL(url);
   } catch {
-    /* ignore */
+    return "VITE_SUPABASE_URL no es una URL válida. Copiá la Project URL desde Supabase.";
   }
-};
 
-const listeners = new Set<Listener>();
-const emit = (event: string, session: Session | null) => {
-  listeners.forEach(l => {
-    try {
-      l(event, session);
-    } catch {
-      /* ignore */
-    }
-  });
-};
+  if (anonKey.trim().length < 20 || anonKey.includes("placeholder")) {
+    return "VITE_SUPABASE_ANON_KEY parece incompleta. Copiá la anon public key o publishable key completa desde Supabase.";
+  }
 
-const makeSession = (user: User): Session => ({
-  access_token: `stub.${user.id}.${Date.now()}`,
-  user,
-});
+  return null;
+}
 
-const getCurrentSession = (): Session | null => read<Session | null>(STORAGE_SESSION, null);
+export const supabaseConfigError = getSupabaseConfigError();
 
-type StoredUser = { id: string; email: string; password: string; user_metadata: Record<string, unknown> };
-const getUsers = (): StoredUser[] => read<StoredUser[]>(STORAGE_USERS, []);
-const saveUsers = (users: StoredUser[]) => write(STORAGE_USERS, users);
+export function isSupabaseConfigured(): boolean {
+  return supabaseConfigError === null;
+}
 
-const stripUser = (u: StoredUser): User => ({
-  id: u.id,
-  email: u.email,
-  user_metadata: u.user_metadata ?? {},
-});
+if (supabaseConfigError && typeof window !== "undefined") {
+  // No tiramos en build/SSR porque rompería el render. Las pantallas que
+  // ejecutan acciones de auth muestran este mismo mensaje con toast.
 
-const auth = {
-  async getSession() {
-    return { data: { session: getCurrentSession() }, error: null as AuthError | null };
-  },
-  async getUser() {
-    const s = getCurrentSession();
-    return { data: { user: s?.user ?? null }, error: null as AuthError | null };
-  },
-  async signInWithPassword({ email, password }: { email: string; password: string }) {
-    const users = getUsers();
-    const found = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (!found || found.password !== password) {
-      return { data: { session: null, user: null }, error: { message: "Invalid login credentials" } as AuthError };
-    }
-    const session = makeSession(stripUser(found));
-    write(STORAGE_SESSION, session);
-    emit("SIGNED_IN", session);
-    return { data: { session, user: session.user }, error: null as AuthError | null };
-  },
-  async signUp({ email, password, options }: { email: string; password: string; options?: { data?: Record<string, unknown>; emailRedirectTo?: string } }) {
-    const users = getUsers();
-    if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-      return { data: { session: null, user: null }, error: { message: "User already registered" } as AuthError };
-    }
-    const newUser: StoredUser = {
-      id: crypto.randomUUID(),
-      email,
-      password,
-      user_metadata: options?.data ?? {},
-    };
-    users.push(newUser);
-    saveUsers(users);
-    const session = makeSession(stripUser(newUser));
-    write(STORAGE_SESSION, session);
-    emit("SIGNED_IN", session);
-    return { data: { session, user: session.user }, error: null as AuthError | null };
-  },
-  async signOut() {
-    if (isBrowser) localStorage.removeItem(STORAGE_SESSION);
-    emit("SIGNED_OUT", null);
-    return { error: null as AuthError | null };
-  },
-  async updateUser(patch: { password?: string; data?: Record<string, unknown> }) {
-    const session = getCurrentSession();
-    if (!session) return { data: { user: null }, error: { message: "Not authenticated" } as AuthError };
-    const users = getUsers();
-    const idx = users.findIndex(u => u.id === session.user.id);
-    if (idx < 0) return { data: { user: null }, error: { message: "User not found" } as AuthError };
-    if (patch.password) users[idx].password = patch.password;
-    if (patch.data) users[idx].user_metadata = { ...users[idx].user_metadata, ...patch.data };
-    saveUsers(users);
-    const updated = stripUser(users[idx]);
-    const newSession = { ...session, user: updated };
-    write(STORAGE_SESSION, newSession);
-    emit("USER_UPDATED", newSession);
-    return { data: { user: updated }, error: null as AuthError | null };
-  },
-  onAuthStateChange(cb: Listener) {
-    listeners.add(cb);
-    return {
-      data: {
-        subscription: {
-          unsubscribe: () => listeners.delete(cb),
-        },
-      },
-    };
-  },
-};
+  console.error(`[supabase] ${supabaseConfigError}`);
+}
 
-// Chainable no-op query builder so `supabase.from(...).select()...` doesn't crash.
-const emptyResult = { data: null, error: null as AuthError | null };
-const builder: any = new Proxy(
-  {},
+export const supabase: SupabaseClient = createClient(
+  url ?? "https://placeholder.supabase.co",
+  anonKey ?? "placeholder-anon-key",
   {
-    get(_t, prop) {
-      if (prop === "then") {
-        return (resolve: (v: typeof emptyResult) => unknown) => resolve(emptyResult);
-      }
-      if (prop === "maybeSingle" || prop === "single") {
-        return async () => emptyResult;
-      }
-      return () => builder;
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      flowType: "pkce",
     },
   },
 );
-
-export const supabase = {
-  auth,
-  from(_table: string) {
-    return builder;
-  },
-};
